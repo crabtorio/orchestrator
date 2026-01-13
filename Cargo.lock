@@ -654,6 +654,7 @@ dependencies = [
  "log",
  "luna4",
  "orbitron",
+ "pub-rust-eze",
  "rustrelli",
  "rusty-crab-ap2025",
 ]
@@ -745,6 +746,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "535d180e0ecab6268a3e718bb9fd44db66bbbc256257165fc699dadf70d16fe7"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "pub-rust-eze"
+version = "0.1.0"
+source = "git+https://github.com/Rust-eze-Advanced-Programming/pub-Rust-eze.git?branch=main#a5ce799ba3d488d2a763e808359e74feb76d25a6"
+dependencies = [
+ "common-game 3.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "crossbeam-channel",
+ "log",
 ]
 
 [[package]]
