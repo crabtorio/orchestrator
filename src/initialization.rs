@@ -58,7 +58,7 @@ struct Coords {
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use rand::Rng;
-use rand_distr::{Normal, Distribution};
+use rand_distr::StandardNormal;
 
 
 
@@ -82,11 +82,10 @@ impl PlanetContainer {
 
 impl Coords{
     fn from_rand() -> Self {
-        let normal = Normal::new(2.0, 3.0).unwrap();
         Coords {
-            x: normal.sample(&mut rand::rng()),
-            y: normal.sample(&mut rand::rng()),
-            z: normal.sample(&mut rand::rng())
+            x: rand::rng().sample(StandardNormal),
+            y: rand::rng().sample(StandardNormal),
+            z: rand::rng().sample(StandardNormal)
         }
     }
 
