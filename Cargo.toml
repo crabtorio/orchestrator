@@ -11,8 +11,10 @@ log = "0.4.29"
 #Planets
 rusty-crab-ap2025 = "2.0.0-beta.3"
 rustrelli = { git = "https://github.com/Rustrelli/rustrelli.git", branch = "main" }
-carbonium = { git = "https://github.com/AP-2025-No-Crustaceans-Sky/Carbonium.git", branch = "master" }
+#carbonium = { git = "https://github.com/AP-2025-No-Crustaceans-Sky/Carbonium.git", branch = "master" }
 luna4 = { git = "https://github.com/luna4-ap2025/Planet_Luna4.git", branch = "main" }
 orbitron = { git = "https://github.com/Advanced-Programming-2025-Orbitron/Orbitron.git", branch = "main" }
 pub-rust-eze = {git = "https://github.com/Rust-eze-Advanced-Programming/pub-Rust-eze.git", branch = "main" }
 skycartel = {git = "https://github.com/0TH08/Skycartel.git", branch = "main" }
+rand_distr = "0.5.1"
+rand = "0.9.2"
