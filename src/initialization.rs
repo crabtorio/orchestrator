@@ -1,3 +1,4 @@
+use crate::utils::*;
 use std::cell::{RefCell};
 use std::ops::Deref;
 use std::rc::Rc;
@@ -40,27 +41,17 @@ impl Galaxy{
     }
 }
 
-use common_game::components::planet::Planet as planet;
-
-struct tempPlanet {} //temporary planet to make the compiler not mad while Luca figures out the planet importing
+struct TempPlanet {} //temporary planet to make the compiler not mad while Luca figures out the planet importing
 struct PlanetContainer { //Unifies the planet, its galaxy ID and encodes the adjacencies
     id: usize,
-    planet: tempPlanet,
+    planet: TempPlanet,
     adj: Vec<Rc<RefCell<PlanetContainer>>>,
-    c: Coords
-}
-
-struct Coords {
-    x: f64,
-    y: f64,
-    z: f64
+    c: Coord
 }
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use rand::Rng;
 use rand_distr::StandardNormal;
-
-
 
 static IDCOUNTER: AtomicUsize = AtomicUsize::new(1);
 impl PlanetContainer {
@@ -73,16 +64,16 @@ impl PlanetContainer {
 
         PlanetContainer{
             id: IDCOUNTER.fetch_add(1, Ordering::Relaxed),
-            planet: tempPlanet {},
+            planet: TempPlanet {},
             adj: Vec::new(),
-            c: Coords::from_rand()
+            c: Coord::from_rand()
         }
     }
 }
 
-impl Coords{
+impl Coord {
     fn from_rand() -> Self {
-        Coords {
+        Coord {
             x: rand::rng().sample(StandardNormal),
             y: rand::rng().sample(StandardNormal),
             z: rand::rng().sample(StandardNormal)
