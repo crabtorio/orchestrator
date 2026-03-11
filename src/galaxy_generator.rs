@@ -95,7 +95,7 @@ impl Hash for PlanetContainer {
 }
 
 impl Galaxy {
-    pub fn from_random_distribution(planet_count: i32, adj_size: f64) -> Self { //Of course starting a galaxy should be done as it's method
+    pub fn from_random_distribution(planet_count: i32, expected_percentage: f64) -> Self { //Of course starting a galaxy should be done as it's method
         struct Coords {
             x: f64,
             y: f64,
@@ -170,8 +170,17 @@ impl Galaxy {
             }
         }
 
+        let adj_size= match expected_percentage {   //Simple piecewise linear interpolation
+            ..=0.0 => {0.0},    //Negative values are normalized to zero
+            0.0..=68.0 => {expected_percentage/68.0},   //First line, between 0 and 1
+            68.0..=95.0 => {(expected_percentage-68.0)/(95.0-68.0)+1.0},    //Second line between 1 and 2
+            _ => {(expected_percentage-95.0)/(99.0-95.0)+2.0},  //Second line, from 2 and passes through 3 but with no upper bound
+        };
+
         let mut in_set = HashSet::new();
         let mut out_set = HashMap::new();
+
+        if planet_count == 0 {return Galaxy{ planets: HashMap::new() }} //Early out for no-planet galaxy
 
         for _ in 0..planet_count {
             let new_planet = PlanetContainer::new();
@@ -181,7 +190,7 @@ impl Galaxy {
         for i in out_set.values() {
             for ii in out_set.values() {
                 let dist = i.get_dist(ii);
-                if dist <= adj_size && i != ii {
+                if dist <= adj_size && i != ii {    //Makes sure the planet is not adjacent to itself
                     i.plnt.borrow_mut().adj.push(ii.plnt.clone());  //Simple adjacency, the prim algorithm later will sort out
                 }
             }
@@ -205,17 +214,17 @@ impl Galaxy {
                 }
             }
             if !out_set.is_empty() { //Double check the last expansion hasn't depleted the out_sets
-                let minDist = f64::INFINITY; //Since this is infinity all values should be smaller, effectively guaranteeing at least one true later
+                let min_dist = f64::INFINITY; //Since this is infinity all values should be smaller, effectively guaranteeing at least one true later
                 let mut A = None; //Options to make Rust not cry
                 let mut B = None;
                 let mut C = None;
                 for i in in_set.iter() {
                     for ii in out_set.values() {
                         let dist = i.get_dist(ii);
-                        if dist < minDist {
+                        if dist < min_dist {
                             A = Some(i.plnt.clone());
                             B = Some(ii.plnt.clone());
-                            C = Some(ii.clone()); //Third copy just for confort, could be optimized away by unwrapping and extracting data earlier, but this is nicer
+                            C = Some(ii.clone()); //Third copy just for comfort, could be optimized away by unwrapping and extracting data earlier, but this is nicer
                         }
                     }
                 }
@@ -249,5 +258,50 @@ impl Galaxy {
         "#)
     }
     *///Also, serializing the galaxy should be a method of that galaxy for that sweet sweet &self
+
+}
+
+//Tests from here
+#[cfg(test)]
+mod tests {
+    use rand::SeedableRng;
+    use super::*;
+
+    #[test]
+    fn test_rand_gen_count_and_spanning() {
+        //Verify the number of planets is actually the one requested
+        let mut rng = rand::rng();
+        let count = rng.random_range(0..=10000);
+        let SOMEADJ: f64 = 25.0;
+        let mut galaxy = Galaxy::from_random_distribution(count, SOMEADJ);
+
+        assert!(count == galaxy.planets.iter().count().try_into().unwrap()); //Also technically cheks if the i32 used to make planets somehow made more than an i32 can fit
+
+        let connected_punchcard:Rc<RefCell<HashSet<usize>>> = Rc::new(RefCell::new(HashSet::new()));
+        let starting = galaxy.planets.get(&IDCOUNTER_START).unwrap().clone();
+        fn recursive_expl (punch:Rc<RefCell<HashSet<usize>>>, cur: Rc<RefCell<PlanetContainer>>) {  //Function loads into a container all the nodes connected to one
+            if punch.borrow_mut().insert(cur.borrow().Handling_ID) {
+                for i in cur.borrow().adj.iter() {
+                    recursive_expl(punch.clone(), i.clone());
+                }
+            }
+        }
+
+        recursive_expl(connected_punchcard.clone(), starting);
+        for i in galaxy.planets.keys() {
+            assert!(connected_punchcard.borrow().contains(i)); //If there's an ID in the galaxy and not the punchcard, something's missing
+        }
+    }
+
+    #[test]
+    fn test_rand_gen_sanity_adj() {
+        //No planet should have itself in its adjacencies, or duplicates
+    }
+
+    #[test]
+    fn test_rand_gen_simmetry() {
+        //For any two planets A, B: A->B => B->A
+    }
+
 
 }
