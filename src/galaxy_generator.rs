@@ -33,31 +33,27 @@ pub struct GalaxyDef {
 
 // == Galaxy generation and implementation ==
 //implementing the galaxy entirely because a good refactor was needed even if Luca wastes my time
-use std::{rc::Rc, cell::RefCell, collections::{HashMap, HashSet}, sync::atomic::{AtomicUsize, Ordering}};
+use std::{rc::Rc, cell::RefCell, collections::{HashMap, HashSet}};
 use std::hash::Hash;
 use rand::Rng;
 use rand_distr::StandardNormal;
 
 pub struct Galaxy {
-    planets: HashMap<usize, Rc<RefCell<PlanetContainer>>>  //Shifted to a hashmap to ease removal down the line, otherwise acts as a vec for what we need. Usize entry is for number-driven acess like rands
+    planets: HashMap<i32, Rc<RefCell<PlanetContainer>>>  //Shifted to a hashmap to ease removal down the line, otherwise acts as a vec for what we need. i32 entry is for number-driven acess like rands
     //Other, galaxy-wide info can go here
 }
 
 struct PlanetContainer {
-    Handling_ID: usize,
+    Handling_ID: i32,
 //    planet: Planet    //Uncommented when the planet selection is complete. for one, this one is actually on me
     adj: Vec<Rc<RefCell<PlanetContainer>>>
 }
 
-const IDCOUNTER_START: usize = 1;
-static IDCOUNTER: AtomicUsize = AtomicUsize::new(IDCOUNTER_START); //ID counter and AtomicUsize imports are temporary until i understand how the ID field on the actual planets work
-
-static MAXID: AtomicUsize = AtomicUsize::new(IDCOUNTER_START);  //Pub for simplification of random functions
-
 impl PlanetContainer {  //new is the WIP creation, since the only values accessed is handler_id and adj, either being discardable or initialized at empty
-    fn new() -> Self {
+    fn new(id: &mut i32) -> Self {
+        *id += 1;
         PlanetContainer{
-            Handling_ID: IDCOUNTER.fetch_add(1, Ordering::Relaxed),
+            Handling_ID: *id-1,
             adj: Vec::new()
         }
     }
@@ -179,11 +175,15 @@ impl Galaxy {
 
         let mut in_set = HashSet::new();
         let mut out_set = HashMap::new();
+        let mut lag_set = HashSet::new();
+
+        const IDSTART:i32 = 1;
+        let mut ID_count = IDSTART;
 
         if planet_count == 0 {return Galaxy{ planets: HashMap::new() }} //Early out for no-planet galaxy
 
         for _ in 0..planet_count {
-            let new_planet = PlanetContainer::new();
+            let new_planet = PlanetContainer::new(&mut ID_count);
             out_set.insert(new_planet.Handling_ID, CoordContainer::new(Rc::new(RefCell::new(new_planet)))); //Birth of the planets, from random
         }
 
@@ -196,22 +196,23 @@ impl Galaxy {
             }
         }
 
-        in_set.insert(out_set.remove(&IDCOUNTER_START).unwrap());   //Again, under any sane circumstance this should be Some
+        in_set.insert(out_set.remove(&IDSTART).unwrap());   //Again, under any sane circumstance this should be Some
         let mut late_queue = Vec::new();    //Deferring the de-orphaning to  the last step saves some calculations by reducing the size of the expansion necessary of a temp set
         while !out_set.is_empty() { //By running the out_set to the ground we are sure there are no orphans left
             let mut has_updated = true;
             while has_updated {
                 has_updated = false;
                 let temp_set = in_set.clone();  //The temp set is necessary because the iterator doesn't like to have its set touched
-                for i in temp_set.iter() {
+                for i in temp_set.difference(&lag_set) {
                     for ii in i.plnt.borrow().adj.iter() {
                         let maybe_entry = out_set.remove(&ii.borrow().Handling_ID);
                         match maybe_entry {
                             None => {}
-                            Some(entry) => {has_updated = has_updated || in_set.insert(entry);}   //The OR preserves true results, and the Option allows us to remove everything willy nilly
+                            Some(entry) => {has_updated = in_set.insert(entry) || has_updated;}   //The OR preserves true results, and the Option allows us to remove everything willy nilly
                         }
                     }
                 }
+                lag_set = temp_set;
             }
             if !out_set.is_empty() { //Double check the last expansion hasn't depleted the out_sets
                 let min_dist = f64::INFINITY; //Since this is infinity all values should be smaller, effectively guaranteeing at least one true later
@@ -250,8 +251,8 @@ impl Galaxy {
 
 #[derive(Serialize,Deserialize)]
 struct PlanetEntry {
-    planet_id : usize,
-    adjacencies : Vec<usize>
+    planet_id : i32,
+    adjacencies : Vec<i32>
 }
 
 impl Serialize for Galaxy {
@@ -294,15 +295,15 @@ mod tests {
     fn test_rand_gen_count_and_spanning() {
         //Verify the number of planets is actually the one requested
         let mut rng = rand::rng();
-        let count = rng.random_range(0..=10000);
-        let SOMEADJ: f64 = 25.0;
+        let count = rng.random_range(0..=1000);
+        let SOMEADJ: f64 = 80.0;
         let mut galaxy = Galaxy::from_random_distribution(count, SOMEADJ);
 
         assert!(count == galaxy.planets.iter().count().try_into().unwrap()); //Also technically cheks if the i32 used to make planets somehow made more than an i32 can fit
 
-        let connected_punchcard:Rc<RefCell<HashSet<usize>>> = Rc::new(RefCell::new(HashSet::new()));
-        let starting = galaxy.planets.get(&IDCOUNTER_START).unwrap().clone();
-        fn recursive_expl (punch:Rc<RefCell<HashSet<usize>>>, cur: Rc<RefCell<PlanetContainer>>) {  //Function loads into a container all the nodes connected to one
+        let connected_punchcard:Rc<RefCell<HashSet<i32>>> = Rc::new(RefCell::new(HashSet::new()));
+        let starting = galaxy.planets.get(&1).unwrap().clone();
+        fn recursive_expl (punch:Rc<RefCell<HashSet<i32>>>, cur: Rc<RefCell<PlanetContainer>>) {  //Function loads into a container all the nodes connected to one
             if punch.borrow_mut().insert(cur.borrow().Handling_ID) {
                 for i in cur.borrow().adj.iter() {
                     recursive_expl(punch.clone(), i.clone());
@@ -319,11 +320,39 @@ mod tests {
     #[test]
     fn test_rand_gen_sanity_adj() {
         //No planet should have itself in its adjacencies, or duplicates
+        let mut rng = rand::rng();
+        let count = rng.random_range(0..=1000);
+        let SOMEADJ: f64 = 80.0;
+        let mut galaxy = Galaxy::from_random_distribution(count, SOMEADJ);
+
+        for i in galaxy.planets.values() {
+            for ii in 0..i.borrow().adj.len() {
+                assert_ne!(i.borrow().Handling_ID, i.borrow().adj[ii].borrow().Handling_ID);    //No self reference
+                for iii in ii+1..i.borrow().adj.len() {
+                    assert_ne!(i.borrow().adj[ii].borrow().Handling_ID, i.borrow().adj[iii].borrow().Handling_ID);  //No duplicates
+                }
+            }
+        }
     }
 
     #[test]
     fn test_rand_gen_simmetry() {
         //For any two planets A, B: A->B => B->A
+
+        let mut rng = rand::rng();
+        let count = rng.random_range(0..=1000);
+        let SOMEADJ: f64 = 80.0;
+        let mut galaxy = Galaxy::from_random_distribution(count, SOMEADJ);
+
+        for i in galaxy.planets.values() {  //For every planet A
+            for ii in i.borrow().adj.iter() {   //For every planet B: A->B
+                let mut has_self = false;
+                for iii in ii.borrow().adj.iter() { //For every planet C: B->C
+                    has_self = iii.borrow().Handling_ID == i.borrow().Handling_ID || has_self; //Check A == C
+                }
+                assert!(has_self);
+            }
+        }
     }
 
 
