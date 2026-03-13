@@ -1,11 +1,11 @@
-use serde::{Deserialize, Serialize};
+use serde::ser::SerializeSeq;
+use serde::{Deserialize, Serialize, Serializer};
 use common_game::components::planet::{Planet as BasePlanet, Planet};
 use common_game::protocols::{orchestrator_planet, planet_explorer};
 use common_game::utils::ID;
 use rustrelli::ExplorerRequestLimit;
 use rusty_crab_ap2025::planet::create_planet;
 use toml::de::Error;  //Clippy don't like them
-use toml::toml;
 
 #[derive(Debug,Serialize,Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -246,18 +246,41 @@ impl Galaxy {
         Galaxy{planets: ending_set}
     }
 
-    /* I'll just comment out all the code that relies on coordinates, which again we are not going to neither save to file or use outside of the fancy generation
-    pub fn deserialize_galaxy(path : &str) -> Result<GalaxyDef,Error> {
-        toml::from_str(r#"
-            [[planet]]
-            vendor="rustrelli"
-            [planet.location]
-            x=42
-            y=42
-            z=42
-        "#)
+}
+
+#[derive(Serialize,Deserialize)]
+struct PlanetEntry {
+    planet_id : usize,
+    adjacencies : Vec<usize>
+}
+
+impl Serialize for Galaxy {
+
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: Serializer 
+    {   
+        let mut seq = serializer.serialize_seq(Some(self.planets.len()))?;
+        for (planet_id, planet) in &self.planets {
+            let adjacencies = self.planets.iter()
+                .filter_map(
+                    |(other_planet_id,other_planet)| {
+                        if other_planet == planet {
+                            None
+                        } else {
+                            Some(*other_planet_id)
+                        }
+                    }
+                ).collect();
+
+            seq.serialize_element(
+                &PlanetEntry{
+                    planet_id: *planet_id,
+                    adjacencies
+                }
+            )?;
+        }
+        seq.end()
     }
-    *///Also, serializing the galaxy should be a method of that galaxy for that sweet sweet &self
 
 }
 
