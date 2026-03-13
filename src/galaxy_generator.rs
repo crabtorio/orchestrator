@@ -262,14 +262,15 @@ impl Serialize for Galaxy {
     {   
         let mut seq = serializer.serialize_seq(Some(self.planets.len()))?;
         for (planet_id, planet) in &self.planets {
-            let adjacencies = self.planets.iter()
-                .filter_map(
-                    |(other_planet_id,other_planet)| {
-                        if other_planet == planet {
-                            None
-                        } else {
-                            Some(*other_planet_id)
-                        }
+            let adjacencies = planet.borrow().adj.iter()
+                .map( |adj_planet| {
+                        self.planets.iter().find_map(|(pid,p)| 
+                            if p == adj_planet {
+                                Some(*pid)
+                            } else {
+                                None
+                            }
+                        ).expect("Planet must be in Galaxy")
                     }
                 ).collect();
 
