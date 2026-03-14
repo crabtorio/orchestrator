@@ -311,7 +311,7 @@ impl<'de> Deserialize<'de> for Galaxy {
             for adj_id in &entry.adjacencies {
                 let adj = planets.get(adj_id)
                     .ok_or_else(|| serde::de::Error::custom(
-                        format!("adjacency references unknown planet id {adj_id}")
+                        format!("Adjacency references unknown planet id {adj_id}")
                     ))?
                     .clone();
                 planet.borrow_mut().adj.push(adj);
