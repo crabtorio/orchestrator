@@ -1,5 +1,6 @@
+use serde::de::Visitor;
 use serde::ser::SerializeSeq;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use common_game::components::planet::{Planet as BasePlanet, Planet};
 use common_game::protocols::{orchestrator_planet, planet_explorer};
 use common_game::utils::ID;
@@ -284,6 +285,41 @@ impl Serialize for Galaxy {
         seq.end()
     }
 
+}
+
+impl<'de> Deserialize<'de> for Galaxy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: Deserializer<'de>
+    {
+        let entries = Vec::<PlanetEntry>::deserialize(deserializer)?;
+
+        let planets: HashMap<i32, Rc<RefCell<PlanetContainer>>> = entries
+            .iter()
+            .map(|entry| {
+                let container = Rc::new(RefCell::new(
+                    PlanetContainer {
+                        Handling_ID: entry.planet_id,
+                        adj: Vec::new(),
+                    }
+                ));
+                (entry.planet_id, container)
+            })
+            .collect();
+
+        for entry in &entries {
+            let planet = planets[&entry.planet_id].clone();
+            for adj_id in &entry.adjacencies {
+                let adj = planets.get(adj_id)
+                    .ok_or_else(|| serde::de::Error::custom(
+                        format!("adjacency references unknown planet id {adj_id}")
+                    ))?
+                    .clone();
+                planet.borrow_mut().adj.push(adj);
+            }
+        }
+
+        Ok(Galaxy { planets })
+    }
 }
 
 //Tests from here
