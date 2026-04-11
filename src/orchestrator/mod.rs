@@ -1,7 +1,14 @@
 use crate::{galaxy_generator::Galaxy, orchestrator::ai::Ai};
-mod ai;
-struct Orchestrator {
+pub mod ai;
+pub struct Orchestrator {
     galaxy: Galaxy,
     ai: Box<dyn Ai>,
-    //todo
+}
+impl Orchestrator {
+    pub fn new(galaxy: Galaxy, ai: Box<dyn Ai>) -> Self {
+        Orchestrator { galaxy, ai }
+    }
+    pub fn run(&mut self) {
+        //Todo
+    }
 }
