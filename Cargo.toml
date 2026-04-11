@@ -7,6 +7,7 @@ edition = "2024"
 common-game = "3.0.0"
 env_logger = "0.11.8"
 log = "0.4.29"
+clap = { version = "4", features = ["derive"] }
 
 #Planets
 rusty-crab-ap2025 = "2.0.0-beta.3"
