@@ -1,1 +1,0 @@
-//TODO real inizialization stuff, all galaxy generation has been moved where it should

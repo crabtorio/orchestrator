@@ -1,5 +1,3 @@
-use clap::ValueEnum;
-
 pub trait Ai {
     fn run(&self);
 }

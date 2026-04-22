@@ -1,4 +1,9 @@
+use crate::galaxy_generator::Galaxy;
 use clap::{Parser, Subcommand, ValueEnum};
+use std::{
+    fs::{create_dir, read_to_string, write},
+    io::Error,
+};
 
 #[derive(Parser)]
 pub struct Cli {
@@ -25,4 +30,27 @@ pub enum Command {
 pub enum AiMode {
     Manual,
     Auto,
+}
+impl Command {
+    pub fn run(self) -> Result<Galaxy, Error> {
+        match self {
+            Command::Generate {
+                name: galaxy_name,
+                planet_count,
+                expected_percentage,
+            } => {
+                let galaxy = Galaxy::from_random_distribution(planet_count, expected_percentage);
+
+                let json = serde_json::to_string_pretty(&galaxy)?;
+                create_dir("./galaxies")?;
+                write(format!("./galaxies/{}.json", galaxy_name), json)?;
+                Ok(galaxy)
+            }
+            Command::Run { galaxy_name, mode } => {
+                let galaxy_str = read_to_string(format!("./galaxies/{}.json", galaxy_name))?;
+                let galaxy: Galaxy = serde_json::from_str(&galaxy_str)?;
+                Ok(galaxy)
+            }
+        }
+    }
 }
