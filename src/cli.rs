@@ -1,7 +1,7 @@
 use crate::galaxy_generator::Galaxy;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::{
-    fs::{create_dir, read_to_string, write},
+    fs::{create_dir_all, read_to_string, write},
     io::Error,
 };
 
@@ -42,7 +42,7 @@ impl Command {
                 let galaxy = Galaxy::from_random_distribution(planet_count, expected_percentage);
 
                 let json = serde_json::to_string_pretty(&galaxy)?;
-                create_dir("./galaxies")?;
+                create_dir_all("./galaxies")?;
                 write(format!("./galaxies/{}.json", galaxy_name), json)?;
                 Ok(galaxy)
             }
