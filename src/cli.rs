@@ -1,4 +1,4 @@
-use crate::galaxy_generator::Galaxy;
+use crate::{galaxy_generator::Galaxy, orchestrator::Orchestrator};
 use clap::{Parser, Subcommand, ValueEnum};
 use std::{
     fs::{create_dir_all, read_to_string, write},
@@ -22,17 +22,21 @@ pub enum Command {
     },
     Run {
         galaxy_name: String,
-        mode: AiMode,
+        mode: AiModeCommand,
     },
 }
 
 #[derive(ValueEnum, Clone)]
-pub enum AiMode {
+pub enum AiModeCommand {
     Manual,
     Auto,
 }
+pub enum CommandResult {
+    Generated,
+    Running(Orchestrator),
+}
 impl Command {
-    pub fn run(self) -> Result<Galaxy, Error> {
+    pub fn run(self) -> Result<CommandResult, Error> {
         match self {
             Command::Generate {
                 name: galaxy_name,
@@ -44,12 +48,16 @@ impl Command {
                 let json = serde_json::to_string_pretty(&galaxy)?;
                 create_dir_all("./galaxies")?;
                 write(format!("./galaxies/{}.json", galaxy_name), json)?;
-                Ok(galaxy)
+                Ok(CommandResult::Generated)
             }
             Command::Run { galaxy_name, mode } => {
                 let galaxy_str = read_to_string(format!("./galaxies/{}.json", galaxy_name))?;
                 let galaxy: Galaxy = serde_json::from_str(&galaxy_str)?;
-                Ok(galaxy)
+                let mode = match mode {
+                    AiModeCommand::Manual => false,
+                    AiModeCommand::Auto => true,
+                };
+                Ok(CommandResult::Running(Orchestrator::new(galaxy, mode)))
             }
         }
     }

@@ -1,3 +1,4 @@
+/*
 pub trait Ai {
     fn run(&self);
 }
@@ -17,3 +18,4 @@ impl Ai for Auto {
         //Todo
     }
 }
+*/

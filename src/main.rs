@@ -1,4 +1,7 @@
-use crate::logging::init;
+use crate::{
+    cli::CommandResult::{Generated, Running},
+    logging::init,
+};
 use clap::Parser;
 use cli::Cli;
 mod cli;
@@ -10,7 +13,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     init();
     let cli = Cli::parse();
 
-    let galaxy = cli.command.run()?;
-
+    match cli.command.run()? {
+        Generated => {}
+        Running(mut orchestrator) => {
+            orchestrator.run();
+        }
+    }
     Ok(())
 }
