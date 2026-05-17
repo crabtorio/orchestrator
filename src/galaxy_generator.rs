@@ -1,12 +1,12 @@
 use common_game::components::planet::Planet;
-use common_game::protocols::{orchestrator_planet, planet_explorer};
+use common_game::protocols::{orchestrator_explorer, orchestrator_planet, planet_explorer};
 use common_game::utils::ID;
 use rustrelli::ExplorerRequestLimit;
 use rusty_crab_ap2025::planet;
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum PlanetVendor {
     RustyCrab,
@@ -17,11 +17,24 @@ pub enum PlanetVendor {
     PubRustEze,
     Skycartel,
 }
+impl Distribution<PlanetVendor> for StandardNormal {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PlanetVendor {
+        match rng.random_range(0..7) {
+            0 => PlanetVendor::RustyCrab,
+            1 => PlanetVendor::Rustrelli,
+            2 => PlanetVendor::Carbonium,
+            3 => PlanetVendor::Luna4,
+            4 => PlanetVendor::Orbitron,
+            5 => PlanetVendor::PubRustEze,
+            6 => PlanetVendor::Skycartel,
+            other => panic!("Planet rng somehow rolled outside of bounds: {}", other)
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)] //What even is this, actually? Regardless of that, why would it need be public?
 pub struct PlanetData {
     vendor: PlanetVendor,
-    //location : Coord TODO luca fix it
 }
 
 #[derive(Debug, Serialize, Deserialize)] //Same as comment before, but doubly so
@@ -40,25 +53,41 @@ use std::{
     collections::{HashMap, HashSet},
     rc::Rc,
 };
+use clap::Id;
+use luna4::logging::log_planet_event;
+use rand::distr::Distribution;
+use rand_distr::num_traits::ToPrimitive;
 
 pub struct Galaxy {
-    planets: HashMap<i32, Rc<RefCell<PlanetContainer>>>, //Shifted to a hashmap to ease removal down the line, otherwise acts as a vec for what we need. i32 entry is for number-driven acess like rands
+    planets: HashMap<ID, Rc<RefCell<PlanetContainer>>>, //Shifted to a hashmap to ease removal down the line, otherwise acts as a vec for what we need. i32 entry is for number-driven acess like rands
                                                          //Other, galaxy-wide info can go here
 }
 
 struct PlanetContainer {
-    handling_id: i32,
-    //    planet: Planet    //Uncommented when the planet selection is complete. for one, this one is actually on me
+    handling_id: ID,
+    planet: Planet,
     adj: Vec<Rc<RefCell<PlanetContainer>>>,
+    vendor: PlanetVendor,   //Stored vendor because otherwise unknown
+    tx_planet: crossbeam_channel::Sender<orchestrator_planet::OrchestratorToPlanet>,
+    rx_planet: crossbeam_channel::Receiver<orchestrator_planet::PlanetToOrchestrator>,
+    //tx_explorer: crossbeam_channel::Sender<orchestrator_explorer::ExplorerToPlanet>, //Doesn't like this one, why?
 }
 
 impl PlanetContainer {
     //new is the WIP creation, since the only values accessed is handler_id and adj, either being discardable or initialized at empty
-    fn new(id: &mut i32) -> Self {
+    fn new(id: &mut ID) -> Self {
         *id += 1;
+        let vendor: PlanetVendor = rand::rng().sample(StandardNormal);
+        let (tp1, rp1) = crossbeam_channel::unbounded();
+        let (tp2, rp2) = crossbeam_channel::unbounded();
+        let (te, re) = crossbeam_channel::unbounded();
         PlanetContainer {
+            vendor: vendor.clone(),
+            planet: PlanetContainer::get_planet(vendor, rp1, tp2, re, *id-1),
             handling_id: *id - 1,
             adj: Vec::new(),
+            tx_planet: tp1,
+            rx_planet: rp2,
         }
     }
     fn get_planet(
@@ -196,14 +225,14 @@ impl Galaxy {
             }
         }
 
-        struct late_binding {
+        struct LateBinding {
             p1: Rc<RefCell<PlanetContainer>>,
             p2: Rc<RefCell<PlanetContainer>>,
         }
 
-        impl late_binding {
+        impl LateBinding {
             fn new(p1: Rc<RefCell<PlanetContainer>>, p2: Rc<RefCell<PlanetContainer>>) -> Self {
-                late_binding { p1, p2 }
+                LateBinding { p1, p2 }
             }
 
             fn resolve(self) {
@@ -224,7 +253,7 @@ impl Galaxy {
         let mut out_set = HashMap::new();
         let mut lag_set = HashSet::new();
 
-        const IDSTART: i32 = 1;
+        const IDSTART: ID= 1;
         let mut id_count = IDSTART;
 
         if planet_count == 0 {
@@ -288,7 +317,7 @@ impl Galaxy {
                         }
                     }
                 }
-                late_queue.push(late_binding::new(a.unwrap(), b.unwrap().clone())); //I am once again reminding you that it would be very concerning for either to be None
+                late_queue.push(LateBinding::new(a.unwrap(), b.unwrap().clone())); //I am once again reminding you that it would be very concerning for either to be None
                 let temp = c.unwrap();
                 out_set.remove(&temp.plnt.borrow().handling_id);
                 in_set.insert(temp);
@@ -311,8 +340,9 @@ impl Galaxy {
 
 #[derive(Serialize, Deserialize)]
 struct PlanetEntry {
-    planet_id: i32,
-    adjacencies: Vec<i32>,
+    planet_id: ID,
+    adjacencies: Vec<ID>,
+    vendor: PlanetVendor,
 }
 
 impl Serialize for Galaxy {
@@ -337,6 +367,7 @@ impl Serialize for Galaxy {
             seq.serialize_element(&PlanetEntry {
                 planet_id: *planet_id,
                 adjacencies,
+                vendor: planet.borrow().vendor.clone(), //hack job, todoeventually make it better
             })?;
         }
         seq.end()
@@ -350,12 +381,18 @@ impl<'de> Deserialize<'de> for Galaxy {
     {
         let entries = Vec::<PlanetEntry>::deserialize(deserializer)?;
 
-        let planets: HashMap<i32, Rc<RefCell<PlanetContainer>>> = entries
+        let planets: HashMap<ID, Rc<RefCell<PlanetContainer>>> = entries
             .iter()
             .map(|entry| {
+                let ((tp1, rp1), (tp2, rp2), (te, re)) = (crossbeam_channel::unbounded(), crossbeam_channel::unbounded(), crossbeam_channel::unbounded());
                 let container = Rc::new(RefCell::new(PlanetContainer {
                     handling_id: entry.planet_id,
+                    planet: PlanetContainer::get_planet(entry.vendor.clone(), rp1, tp2, re, entry.planet_id.try_into().unwrap()),
                     adj: Vec::new(),
+                    vendor: entry.vendor.clone(), //not sure cloning is right, but oh well
+                    tx_planet: tp1,
+                    rx_planet: rp2,
+                    //tx_explorer: te
                 }));
                 (entry.planet_id, container)
             })
@@ -390,14 +427,14 @@ mod tests {
         //Verify the number of planets is actually the one requested
         let mut rng = rand::rng();
         let count = rng.random_range(0..=1000);
-        let SOMEADJ: f64 = 80.0;
-        let mut galaxy = Galaxy::from_random_distribution(count, SOMEADJ);
+        let some_adj: f64 = 80.0;
+        let mut galaxy = Galaxy::from_random_distribution(count, some_adj);
 
-        assert!(count == galaxy.planets.iter().count().try_into().unwrap()); //Also technically checks if the i32 used to make planets somehow made more than an i32 can fit
+        assert_eq!(count, galaxy.planets.iter().count().to_i32().unwrap()); //Also technically checks if the i32 used to make planets somehow made more than an i32 can fit
 
-        let connected_punchcard: Rc<RefCell<HashSet<i32>>> = Rc::new(RefCell::new(HashSet::new()));
+        let connected_punchcard: Rc<RefCell<HashSet<ID>>> = Rc::new(RefCell::new(HashSet::new()));
         let starting = galaxy.planets.get(&1).unwrap().clone();
-        fn recursive_expl(punch: Rc<RefCell<HashSet<i32>>>, cur: Rc<RefCell<PlanetContainer>>) {
+        fn recursive_expl(punch: Rc<RefCell<HashSet<ID>>>, cur: Rc<RefCell<PlanetContainer>>) {
             //Function loads into a container all the nodes connected to one
             if punch.borrow_mut().insert(cur.borrow().handling_id) {
                 for i in cur.borrow().adj.iter() {
@@ -417,8 +454,8 @@ mod tests {
         //No planet should have itself in its adjacencies, or duplicates
         let mut rng = rand::rng();
         let count = rng.random_range(0..=1000);
-        let SOMEADJ: f64 = 80.0;
-        let mut galaxy = Galaxy::from_random_distribution(count, SOMEADJ);
+        let some_adj: f64 = 80.0;
+        let mut galaxy = Galaxy::from_random_distribution(count, some_adj);
 
         for i in galaxy.planets.values() {
             for ii in 0..i.borrow().adj.len() {
@@ -442,8 +479,8 @@ mod tests {
 
         let mut rng = rand::rng();
         let count = rng.random_range(0..=1000);
-        let SOMEADJ: f64 = 80.0;
-        let mut galaxy = Galaxy::from_random_distribution(count, SOMEADJ);
+        let some_adj: f64 = 80.0;
+        let mut galaxy = Galaxy::from_random_distribution(count, some_adj);
 
         for i in galaxy.planets.values() {
             //For every planet A
