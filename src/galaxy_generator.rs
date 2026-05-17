@@ -6,7 +6,7 @@ use rusty_crab_ap2025::planet;
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum PlanetVendor {
     RustyCrab,
@@ -82,7 +82,7 @@ impl PlanetContainer {
         let (tp2, rp2) = crossbeam_channel::unbounded();
         let (te, re) = crossbeam_channel::unbounded();
         PlanetContainer {
-            vendor: vendor.clone(),
+            vendor: vendor,
             planet: PlanetContainer::get_planet(vendor, rp1, tp2, re, *id-1),
             handling_id: *id - 1,
             adj: Vec::new(),
@@ -367,7 +367,7 @@ impl Serialize for Galaxy {
             seq.serialize_element(&PlanetEntry {
                 planet_id: *planet_id,
                 adjacencies,
-                vendor: planet.borrow().vendor.clone(), //hack job, todoeventually make it better
+                vendor: planet.borrow().vendor,
             })?;
         }
         seq.end()
@@ -389,7 +389,7 @@ impl<'de> Deserialize<'de> for Galaxy {
                     handling_id: entry.planet_id,
                     planet: PlanetContainer::get_planet(entry.vendor.clone(), rp1, tp2, re, entry.planet_id.try_into().unwrap()),
                     adj: Vec::new(),
-                    vendor: entry.vendor.clone(), //not sure cloning is right, but oh well
+                    vendor: entry.vendor,
                     tx_planet: tp1,
                     rx_planet: rp2,
                     //tx_explorer: te
