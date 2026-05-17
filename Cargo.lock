@@ -118,6 +118,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5dd9dc738b7a8311c7ade152424974d8115f2cdad61e8dab8dac9f2362298510"
 
 [[package]]
+name = "carbonium"
+version = "0.1.0"
+source = "git+https://github.com/AP-2025-No-Crustaceans-Sky/Carbonium.git?branch=master#929282c4a8acc6f5cf20f7462a4062e03656313b"
+dependencies = [
+ "common-game",
+ "crossbeam-channel",
+ "lazy_static",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -628,6 +638,7 @@ dependencies = [
 name = "orchestrator"
 version = "0.1.0"
 dependencies = [
+ "carbonium",
  "clap",
  "common-game",
  "crossbeam-channel",

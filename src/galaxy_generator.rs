@@ -2,6 +2,7 @@ use common_game::components::planet::Planet;
 use common_game::protocols::{orchestrator_planet, planet_explorer};
 use common_game::utils::ID;
 use rustrelli::ExplorerRequestLimit;
+use rusty_crab_ap2025::planet;
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -82,11 +83,28 @@ impl PlanetContainer {
                 rx_explorer,
                 ExplorerRequestLimit::FairShare,
             ),
-            PlanetVendor::Carbonium => todo!(),
-            PlanetVendor::Luna4 => todo!(),
-            PlanetVendor::Orbitron => todo!(),
-            PlanetVendor::PubRustEze => todo!(),
-            PlanetVendor::Skycartel => todo!(),
+            PlanetVendor::Carbonium => {
+                carbonium::create_planet(planet_id, rx_orchestrator, tx_orchestrator, rx_explorer)
+            }
+            PlanetVendor::Luna4 => {
+                match luna4::create_planet(planet_id, rx_orchestrator, tx_orchestrator, rx_explorer)
+                {
+                    Ok(planet) => planet,
+                    Err(error) => panic!("Error while creating Luna4 planet: \n{}", error),
+                }
+            }
+            PlanetVendor::Orbitron => {
+                orbitron::create_planet(rx_orchestrator, tx_orchestrator, rx_explorer, planet_id)
+            }
+            PlanetVendor::PubRustEze => pub_rust_eze::create_planet(
+                planet_id,
+                rx_orchestrator,
+                tx_orchestrator,
+                rx_explorer,
+            ),
+            PlanetVendor::Skycartel => {
+                skycartel::create_planet(planet_id, rx_orchestrator, tx_orchestrator, rx_explorer)
+            }
         }
     }
 }
