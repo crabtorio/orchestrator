@@ -70,7 +70,7 @@ struct PlanetContainer {
     vendor: PlanetVendor,   //Stored vendor because otherwise unknown
     tx_planet: crossbeam_channel::Sender<orchestrator_planet::OrchestratorToPlanet>,
     rx_planet: crossbeam_channel::Receiver<orchestrator_planet::PlanetToOrchestrator>,
-    //tx_explorer: crossbeam_channel::Sender<orchestrator_explorer::ExplorerToPlanet>, //Doesn't like this one, why?
+    tx_explorer: crossbeam_channel::Sender<planet_explorer::ExplorerToPlanet>,
 }
 
 impl PlanetContainer {
@@ -88,6 +88,7 @@ impl PlanetContainer {
             adj: Vec::new(),
             tx_planet: tp1,
             rx_planet: rp2,
+            tx_explorer: te
         }
     }
     fn get_planet(
@@ -392,7 +393,7 @@ impl<'de> Deserialize<'de> for Galaxy {
                     vendor: entry.vendor,
                     tx_planet: tp1,
                     rx_planet: rp2,
-                    //tx_explorer: te
+                    tx_explorer: te
                 }));
                 (entry.planet_id, container)
             })
