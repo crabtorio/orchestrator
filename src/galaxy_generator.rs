@@ -510,4 +510,17 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_serialize_deserialize() {
+        let pre_galaxy = Galaxy::from_random_distribution(1000, 80.0);
+        let jstr = serde_json::to_string(&pre_galaxy)
+            .expect("A galaxy should always be json-serializeable");
+        let post_galaxy: Galaxy = serde_json::from_str::<Galaxy>(&jstr.as_str())
+            .expect("A valid json galaxy should always be deserializeable");
+        assert!(
+            pre_galaxy.planets == post_galaxy.planets,
+            "A galaxy should not be modified during serialization or deserialization"
+        )
+    }
 }
