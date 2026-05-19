@@ -1,8 +1,7 @@
 use common_game::components::planet::Planet;
-use common_game::protocols::{orchestrator_explorer, orchestrator_planet, planet_explorer};
+use common_game::protocols::{orchestrator_planet, planet_explorer};
 use common_game::utils::ID;
 use rustrelli::ExplorerRequestLimit;
-use rusty_crab_ap2025::planet;
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -27,7 +26,7 @@ impl Distribution<PlanetVendor> for StandardNormal {
             4 => PlanetVendor::Orbitron,
             5 => PlanetVendor::PubRustEze,
             6 => PlanetVendor::Skycartel,
-            other => panic!("Planet rng somehow rolled outside of bounds: {}", other)
+            other => panic!("Planet rng somehow rolled outside of bounds: {}", other),
         }
     }
 }
@@ -46,6 +45,7 @@ pub struct GalaxyDef {
 // == Galaxy generation and implementation ==
 //implementing the galaxy entirely because a good refactor was needed even if Luca wastes my time
 use rand::Rng;
+use rand::distr::Distribution;
 use rand_distr::StandardNormal;
 use std::hash::Hash;
 use std::{
@@ -53,27 +53,28 @@ use std::{
     collections::{HashMap, HashSet},
     rc::Rc,
 };
-use clap::Id;
-use luna4::logging::log_planet_event;
-use rand::distr::Distribution;
-use rand_distr::num_traits::ToPrimitive;
-
 pub struct Galaxy {
     planets: HashMap<ID, Rc<RefCell<PlanetContainer>>>, //Shifted to a hashmap to ease removal down the line, otherwise acts as a vec for what we need. i32 entry is for number-driven acess like rands
-                                                         //Other, galaxy-wide info can go here
+                                                        //Other, galaxy-wide info can go here
 }
 
-struct PlanetContainer {
+pub struct PlanetContainer {
     handling_id: ID,
     planet: Planet,
     adj: Vec<Rc<RefCell<PlanetContainer>>>,
-    vendor: PlanetVendor,   //Stored vendor because otherwise unknown
+    vendor: PlanetVendor, //Stored vendor because otherwise unknown
     tx_planet: crossbeam_channel::Sender<orchestrator_planet::OrchestratorToPlanet>,
     rx_planet: crossbeam_channel::Receiver<orchestrator_planet::PlanetToOrchestrator>,
     tx_explorer: crossbeam_channel::Sender<planet_explorer::ExplorerToPlanet>,
 }
 
 impl PlanetContainer {
+    pub fn run(&mut self) {
+        self.planet.run();
+    }
+    pub fn id(&self) -> ID {
+        self.handling_id
+    }
     //new is the WIP creation, since the only values accessed is handler_id and adj, either being discardable or initialized at empty
     fn new(id: &mut ID) -> Self {
         *id += 1;
@@ -83,12 +84,12 @@ impl PlanetContainer {
         let (te, re) = crossbeam_channel::unbounded();
         PlanetContainer {
             vendor: vendor,
-            planet: PlanetContainer::get_planet(vendor, rp1, tp2, re, *id-1),
+            planet: PlanetContainer::get_planet(vendor, rp1, tp2, re, *id - 1),
             handling_id: *id - 1,
             adj: Vec::new(),
             tx_planet: tp1,
             rx_planet: rp2,
-            tx_explorer: te
+            tx_explorer: te,
         }
     }
     fn get_planet(
@@ -154,6 +155,9 @@ impl Hash for PlanetContainer {
 }
 
 impl Galaxy {
+    pub fn iter(&self) -> impl Iterator<Item = Rc<RefCell<PlanetContainer>>> {
+        self.planets.values().cloned()
+    }
     pub fn from_random_distribution(planet_count: i32, expected_percentage: f64) -> Self {
         //Of course starting a galaxy should be done as it's method
         struct Coords {
@@ -254,7 +258,7 @@ impl Galaxy {
         let mut out_set = HashMap::new();
         let mut lag_set = HashSet::new();
 
-        const IDSTART: ID= 1;
+        const IDSTART: ID = 1;
         let mut id_count = IDSTART;
 
         if planet_count == 0 {
@@ -385,15 +389,25 @@ impl<'de> Deserialize<'de> for Galaxy {
         let planets: HashMap<ID, Rc<RefCell<PlanetContainer>>> = entries
             .iter()
             .map(|entry| {
-                let ((tp1, rp1), (tp2, rp2), (te, re)) = (crossbeam_channel::unbounded(), crossbeam_channel::unbounded(), crossbeam_channel::unbounded());
+                let ((tp1, rp1), (tp2, rp2), (te, re)) = (
+                    crossbeam_channel::unbounded(),
+                    crossbeam_channel::unbounded(),
+                    crossbeam_channel::unbounded(),
+                );
                 let container = Rc::new(RefCell::new(PlanetContainer {
                     handling_id: entry.planet_id,
-                    planet: PlanetContainer::get_planet(entry.vendor.clone(), rp1, tp2, re, entry.planet_id.try_into().unwrap()),
+                    planet: PlanetContainer::get_planet(
+                        entry.vendor.clone(),
+                        rp1,
+                        tp2,
+                        re,
+                        entry.planet_id.try_into().unwrap(),
+                    ),
                     adj: Vec::new(),
                     vendor: entry.vendor,
                     tx_planet: tp1,
                     rx_planet: rp2,
-                    tx_explorer: te
+                    tx_explorer: te,
                 }));
                 (entry.planet_id, container)
             })
