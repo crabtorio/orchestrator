@@ -44,7 +44,7 @@ impl PlanetHandle {
             .tx_planet
             .send(orchestrator_planet::OrchestratorToPlanet::StartPlanetAI)
         {
-            Ok(()) => (),
+            Ok(()) => log::info!("Started planet {}", self.id),
             Err(_) => log::error!("Could not start planet {}", self.id),
         }
     }
@@ -53,8 +53,17 @@ impl PlanetHandle {
             .tx_planet
             .send(orchestrator_planet::OrchestratorToPlanet::StopPlanetAI)
         {
-            Ok(()) => (),
+            Ok(()) => log::info!("Stopped planet {}", self.id),
             Err(_) => log::error!("Could not stop planet {}", self.id),
+        }
+    }
+    fn kill_planet(&self) {
+        match self
+            .tx_planet
+            .send(orchestrator_planet::OrchestratorToPlanet::KillPlanet)
+        {
+            Ok(()) => log::info!("Killed planet {}", self.id),
+            Err(_) => log::error!("Could not kill planet {}", self.id),
         }
     }
     fn join_thread(self) {
@@ -70,21 +79,23 @@ impl Orchestrator {
     }
     pub fn run(&mut self) {
         if self.auto {
-            print!("Ciao");
             let planet_handles: HashMap<ID, PlanetHandle> = self
                 .galaxy
                 .iter()
                 .map(|planet| {
-                    (
-                        planet.lock().unwrap().id(),
-                        PlanetHandle::spawn(planet.clone()),
-                    )
+                    let id = planet.lock().unwrap().id();
+                    (id, PlanetHandle::spawn(planet.clone()))
                 })
                 .collect();
 
-            //Start all planets
+            // Start all planets
             for (_, handle) in &planet_handles {
                 handle.start_planet();
+            }
+
+            // Kill all planets
+            for (_, handle) in &planet_handles {
+                handle.kill_planet();
             }
 
             // Join all planet threads
