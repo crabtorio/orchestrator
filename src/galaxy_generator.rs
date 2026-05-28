@@ -47,16 +47,14 @@ pub struct GalaxyDef {
 use rand::Rng;
 use rand::distr::Distribution;
 use rand_distr::StandardNormal;
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
-use std::{
-    collections::{HashMap, HashSet},
-};
 
 use std::sync::{Arc, Mutex};
 
 pub struct Galaxy {
     planets: HashMap<ID, Arc<Mutex<PlanetContainer>>>, //Shifted to a hashmap to ease removal down the line, otherwise acts as a vec for what we need. ID entry is for number-driven access like rands
-                                                        //Other galaxy-wide info can go here
+                                                       //Other galaxy-wide info can go here
 }
 
 pub struct PlanetContainer {
@@ -64,9 +62,9 @@ pub struct PlanetContainer {
     planet: Planet,
     adj: Vec<Arc<Mutex<PlanetContainer>>>,
     vendor: PlanetVendor, //Stored vendor because otherwise unknown
-    tx_planet: crossbeam_channel::Sender<orchestrator_planet::OrchestratorToPlanet>,
-    rx_planet: crossbeam_channel::Receiver<orchestrator_planet::PlanetToOrchestrator>,
-    tx_explorer: crossbeam_channel::Sender<planet_explorer::ExplorerToPlanet>,
+    pub tx_planet: crossbeam_channel::Sender<orchestrator_planet::OrchestratorToPlanet>,
+    pub rx_planet: crossbeam_channel::Receiver<orchestrator_planet::PlanetToOrchestrator>,
+    pub tx_explorer: crossbeam_channel::Sender<planet_explorer::ExplorerToPlanet>,
 }
 
 impl PlanetContainer {
@@ -140,10 +138,13 @@ impl PlanetContainer {
         }
     }
 
-    pub fn isolate (&mut self) {
-        for i in self.adj.iter() {  //For all adjacent planets
-            for ii in 0..i.lock().unwrap().adj.len() {  //Look through their adjacencies
-                if self.handling_id == i.lock().unwrap().adj[ii].lock().unwrap().handling_id { //when finds self
+    pub fn isolate(&mut self) {
+        for i in self.adj.iter() {
+            //For all adjacent planets
+            for ii in 0..i.lock().unwrap().adj.len() {
+                //Look through their adjacencies
+                if self.handling_id == i.lock().unwrap().adj[ii].lock().unwrap().handling_id {
+                    //when finds self
                     i.lock().unwrap().adj.remove(ii); //remove from list
                 }
             }
@@ -354,12 +355,11 @@ impl Galaxy {
     }
 
     pub fn drop_planet(&mut self, id: ID) {
-        self.planets[&id].lock().unwrap().isolate();    //First isolate planet to remove all references to it
+        self.planets[&id].lock().unwrap().isolate(); //First isolate planet to remove all references to it
         //Is some AI shutdown needed? Goes here
-        self.planets.remove(&id);   //Then remove it from the hashmap
+        self.planets.remove(&id); //Then remove it from the hashmap
         //If this is called from some asteroid-management section, that function should cover explorer handling/killing
     }
-
 }
 
 #[derive(Serialize, Deserialize)]
@@ -384,7 +384,15 @@ impl Serialize for Galaxy {
                 .map(|adj_planet| {
                     self.planets
                         .iter()
-                        .find_map(|(pid, p)| if p.lock().unwrap().handling_id == adj_planet.lock().unwrap().handling_id { Some(*pid) } else { None })
+                        .find_map(|(pid, p)| {
+                            if p.lock().unwrap().handling_id
+                                == adj_planet.lock().unwrap().handling_id
+                            {
+                                Some(*pid)
+                            } else {
+                                None
+                            }
+                        })
                         .expect("Planet must be in Galaxy")
                 })
                 .collect();
@@ -455,9 +463,9 @@ impl<'de> Deserialize<'de> for Galaxy {
 //Tests from here
 #[cfg(test)]
 mod tests {
-    use std::ops::Deref;
-    use rand_distr::num_traits::ToPrimitive;
     use super::*;
+    use rand_distr::num_traits::ToPrimitive;
+    use std::ops::Deref;
 
     #[test]
     fn test_rand_gen_count_and_spanning() {
@@ -473,7 +481,11 @@ mod tests {
         let starting = galaxy.planets.get(&1).unwrap().clone();
         fn recursive_expl(punch: Arc<Mutex<HashSet<ID>>>, cur: Arc<Mutex<PlanetContainer>>) {
             //Function loads into a container all the nodes connected to one
-            if punch.lock().unwrap().insert(cur.lock().unwrap().handling_id) {
+            if punch
+                .lock()
+                .unwrap()
+                .insert(cur.lock().unwrap().handling_id)
+            {
                 for i in cur.lock().unwrap().adj.iter() {
                     recursive_expl(punch.clone(), i.clone());
                 }
@@ -526,7 +538,8 @@ mod tests {
                 let mut has_self = false;
                 for iii in ii.lock().unwrap().adj.iter() {
                     //For every planet C: B->C
-                    has_self = iii.lock().unwrap().handling_id == i.lock().unwrap().handling_id || has_self; //Check A == C
+                    has_self = iii.lock().unwrap().handling_id == i.lock().unwrap().handling_id
+                        || has_self; //Check A == C
                 }
                 assert!(has_self);
             }
@@ -544,7 +557,9 @@ mod tests {
         let mut accumulator: bool = true;
 
         for i in pre_galaxy.planets.keys() {
-            accumulator = pre_galaxy.planets[i].lock().unwrap().deref() == post_galaxy.planets[i].lock().unwrap().deref() && accumulator;
+            accumulator = pre_galaxy.planets[i].lock().unwrap().deref()
+                == post_galaxy.planets[i].lock().unwrap().deref()
+                && accumulator;
         }
 
         assert!(
@@ -553,7 +568,9 @@ mod tests {
         );
 
         for i in post_galaxy.planets.keys() {
-            accumulator =  pre_galaxy.planets[i].lock().unwrap().deref() == post_galaxy.planets[i].lock().unwrap().deref() && accumulator;
+            accumulator = pre_galaxy.planets[i].lock().unwrap().deref()
+                == post_galaxy.planets[i].lock().unwrap().deref()
+                && accumulator;
         }
 
         assert!(
