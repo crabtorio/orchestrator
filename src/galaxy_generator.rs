@@ -5,7 +5,7 @@ use rustrelli::ExplorerRequestLimit;
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum PlanetVendor {
     RustyCrab,
@@ -55,8 +55,8 @@ use std::{
 use std::sync::{Arc, Mutex};
 
 pub struct Galaxy {
-    planets: HashMap<ID, Arc<Mutex<PlanetContainer>>>, //Shifted to a hashmap to ease removal down the line, otherwise acts as a vec for what we need. i32 entry is for number-driven acess like rands
-                                                        //Other, galaxy-wide info can go here
+    planets: HashMap<ID, Arc<Mutex<PlanetContainer>>>, //Shifted to a hashmap to ease removal down the line, otherwise acts as a vec for what we need. ID entry is for number-driven access like rands
+                                                        //Other galaxy-wide info can go here
 }
 
 pub struct PlanetContainer {
@@ -84,7 +84,7 @@ impl PlanetContainer {
         let (tp2, rp2) = crossbeam_channel::unbounded();
         let (te, re) = crossbeam_channel::unbounded();
         PlanetContainer {
-            vendor: vendor,
+            vendor,
             planet: PlanetContainer::get_planet(vendor, rp1, tp2, re, *id - 1),
             handling_id: *id - 1,
             adj: Vec::new(),
@@ -136,6 +136,16 @@ impl PlanetContainer {
             ),
             PlanetVendor::Skycartel => {
                 skycartel::create_planet(planet_id, rx_orchestrator, tx_orchestrator, rx_explorer)
+            }
+        }
+    }
+
+    pub fn isolate (&mut self) {
+        for i in self.adj.iter() {  //For all adjacent planets
+            for ii in 0..i.lock().unwrap().adj.len() {  //Look through their adjacencies
+                if self.handling_id == i.lock().unwrap().adj[ii].lock().unwrap().handling_id { //when finds self
+                    i.lock().unwrap().adj.remove(ii); //remove from list
+                }
             }
         }
     }
@@ -308,7 +318,7 @@ impl Galaxy {
                 lag_set = temp_set;
             }
             if !out_set.is_empty() {
-                //Double check the last expansion hasn't depleted the out_sets
+                //Double-check the last expansion hasn't depleted the out_sets
                 let min_dist = f64::INFINITY; //Since this is infinity all values should be smaller, effectively guaranteeing at least one true later
                 let mut a = None; //Options to make Rust not cry
                 let mut b = None;
@@ -342,6 +352,14 @@ impl Galaxy {
             planets: ending_set,
         }
     }
+
+    pub fn drop_planet(&mut self, id: ID) {
+        self.planets[&id].lock().unwrap().isolate();    //First isolate planet to remove all references to it
+        //Is some AI shutdown needed? Goes here
+        self.planets.remove(&id);   //Then remove it from the hashmap
+        //If this is called from some asteroid-management section, that function should cover explorer handling/killing
+    }
+
 }
 
 #[derive(Serialize, Deserialize)]
@@ -437,6 +455,7 @@ impl<'de> Deserialize<'de> for Galaxy {
 //Tests from here
 #[cfg(test)]
 mod tests {
+    use std::ops::Deref;
     use rand_distr::num_traits::ToPrimitive;
     use super::*;
 
@@ -446,7 +465,7 @@ mod tests {
         let mut rng = rand::rng();
         let count = rng.random_range(0..=1000);
         let some_adj: f64 = 80.0;
-        let mut galaxy = Galaxy::from_random_distribution(count, some_adj);
+        let galaxy = Galaxy::from_random_distribution(count, some_adj);
 
         assert_eq!(count, galaxy.planets.iter().count().to_i32().unwrap()); //Also technically checks if the i32 used to make planets somehow made more than an i32 can fit
 
@@ -473,7 +492,7 @@ mod tests {
         let mut rng = rand::rng();
         let count = rng.random_range(0..=1000);
         let some_adj: f64 = 80.0;
-        let mut galaxy = Galaxy::from_random_distribution(count, some_adj);
+        let galaxy = Galaxy::from_random_distribution(count, some_adj);
 
         for i in galaxy.planets.values() {
             for ii in 0..i.lock().unwrap().adj.len() {
@@ -498,7 +517,7 @@ mod tests {
         let mut rng = rand::rng();
         let count = rng.random_range(0..=1000);
         let some_adj: f64 = 80.0;
-        let mut galaxy = Galaxy::from_random_distribution(count, some_adj);
+        let galaxy = Galaxy::from_random_distribution(count, some_adj);
 
         for i in galaxy.planets.values() {
             //For every planet A
@@ -521,9 +540,25 @@ mod tests {
             .expect("A galaxy should always be json-serializeable");
         let post_galaxy: Galaxy = serde_json::from_str::<Galaxy>(&jstr.as_str())
             .expect("A valid json galaxy should always be deserializeable");
+
+        let mut accumulator: bool = true;
+
+        for i in pre_galaxy.planets.keys() {
+            accumulator = pre_galaxy.planets[i].lock().unwrap().deref() == post_galaxy.planets[i].lock().unwrap().deref() && accumulator;
+        }
+
         assert!(
-            pre_galaxy.planets == post_galaxy.planets,
-            "A galaxy should not be modified during serialization or deserialization"
+            accumulator,
+            "A galaxy should not be modified during serialization or deserialization (injectivity)"
+        );
+
+        for i in post_galaxy.planets.keys() {
+            accumulator =  pre_galaxy.planets[i].lock().unwrap().deref() == post_galaxy.planets[i].lock().unwrap().deref() && accumulator;
+        }
+
+        assert!(
+            accumulator,
+            "A galaxy should not be modified during serialization or deserialization (surjectivity)"
         )
     }
 }
