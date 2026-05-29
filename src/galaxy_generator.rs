@@ -135,19 +135,6 @@ impl PlanetContainer {
             }
         }
     }
-
-    pub fn isolate(&mut self) {
-        for i in self.adj.iter() {
-            //For all adjacent planets
-            let mut other_plt = i.lock().unwrap();
-            for ii in 0..other_plt.adj.len() {
-                //Look through their adjacencies
-                if self.handling_id == other_plt.adj[ii].lock().unwrap().handling_id { //when finds self //Lock might still be problematic, will see later
-                    other_plt.adj.remove(ii); //remove from list
-                }
-            }
-        }
-    }
 }
 
 impl PartialEq for PlanetContainer {
@@ -309,7 +296,7 @@ impl Galaxy {
                     for ii in hold_vec[i.clone()].adj.iter() {
                         let pos = ii.clone() as usize;
                         in_set.insert(pos);
-                        has_updated =  out_set.remove(&pos); || has_updated; //The OR preserves true results
+                        has_updated =  out_set.remove(&pos) || has_updated; //The OR preserves true results
                     }
                 }
                 lag_set = temp_set;
@@ -367,8 +354,17 @@ impl Galaxy {
         }
     }
     pub fn drop_planet(&mut self, id: ID) {
-        self.planets[&id].lock().unwrap().isolate(); //First isolate planet to remove all references to it
+        let planet_arc = self.planets[&id].clone(); //First isolate planet to remove all references to it
+        let planet = planet_arc.lock().unwrap();
         //Is some AI shutdown needed? Goes here
+        for i in planet.adj.iter() { //Isolate planet from all neighbors
+            let mut other = i.lock().unwrap();
+            for ii in 0..other.adj.len() {
+                if Arc::ptr_eq(&planet_arc, &other.adj[ii]) {
+                    other.adj.remove(ii);
+                }
+            }
+        }
         self.planets.remove(&id); //Then remove it from the hashmap
         //If this is called from some asteroid-management section, that function should cover explorer handling/killing
     }
@@ -388,9 +384,9 @@ impl Serialize for Galaxy {
     {
         let mut seq = serializer.serialize_seq(Some(self.planets.len()))?;
         for (planet_id, planet) in &self.planets {
-            let adjacencies = planet
-                .lock()
-                .unwrap()
+            let lock = planet.lock().unwrap();
+
+            /* let adjacencies = lock
                 .adj
                 .iter()
                 .map(|adj_planet| {
@@ -408,11 +404,18 @@ impl Serialize for Galaxy {
                         .expect("Planet must be in Galaxy")
                 })
                 .collect();
+            */ //Not sure how the code is supposed to work, so in the meantime I remade it under here
+
+            let adjacencies = lock.adj.iter().map(|adj_planet| {adj_planet.lock().unwrap().handling_id}).collect();
+
+            for i in &adjacencies {
+                assert_eq!(self.planets[i].lock().unwrap().handling_id, *i, "Planet must be in galaxy");
+            }
 
             seq.serialize_element(&PlanetEntry {
                 planet_id: *planet_id,
                 adjacencies,
-                vendor: planet.lock().unwrap().vendor,
+                vendor: lock.vendor,
             })?;
         }
         seq.end()
@@ -516,7 +519,7 @@ mod tests {
 
     #[test]
     fn test_rand_gen_sanity_adj() {
-        //No planet should have itself in its adjacencies, or duplicates
+        //No planet should have itself in its adjacencies
         let mut rng = rand::rng();
         let count = rng.random_range(0..=1000);
         let some_adj: f64 = 80.0;
@@ -529,18 +532,45 @@ mod tests {
                 assert_ne!(
                     planet.handling_id,
                     adj.handling_id,
-                    "No self adjacence"
+                    "No planet should be self adjacent"
                 );
             }
         }
+    }
+    #[test]
+    fn test_rand_gen_no_cloning() {
+        //No planet should have duplicate adjacencies
+        let mut rng = rand::rng();
+        let count = rng.random_range(0..=1000);
+        let some_adj: f64 = 80.0;
+        let galaxy = Galaxy::from_random_distribution(count, some_adj);
 
         for i in galaxy.planets.values() {
             let planet = i.lock().unwrap();
             for ii in 0..planet.adj.len() {
-                for iii in 0..planet.adj.len() {
-                    if ii != iii {
-                        assert!(!Arc::ptr_eq(&planet.adj[ii], &planet.adj[iii]), "All unique")
+                for iii in ii+1..planet.adj.len() {
+                    if(Arc::ptr_eq(&planet.adj[ii], &planet.adj[iii])) {
+                        println!("{}", count);
+                        println!("{}, {:?}", planet.handling_id, planet.vendor);
+                        for d in 0..planet.adj.len() {
+                            if d == ii || d == iii {
+                                println!("\t!{}: {}!", d, planet.adj[d].lock().unwrap().handling_id);
+                            } else {
+                                println!("\t{}: {}", d, planet.adj[d].lock().unwrap().handling_id);
+                            }
+                        }
+
+                        println!(";");
+                        let lock = planet.adj[ii].lock().unwrap();
+                        for d in 0..lock.adj.len() {
+                            if Arc::ptr_eq(&lock.adj[d], &i) {
+                                println!("\t!{}: {}!", d, planet.handling_id);
+                            } else {
+                                println!{"\t{}: {}", d, lock.adj[d].lock().unwrap().handling_id};
+                            }
+                        }
                     }
+                    assert!(!Arc::ptr_eq(&planet.adj[ii], &planet.adj[iii]), "All adjacencies should be unique")
                 }
             }
         }
@@ -551,7 +581,7 @@ mod tests {
         //For any two planets A, B: A->B => B->A
 
         let mut rng = rand::rng();
-        let count = rng.random_range(0..=1000);
+        let count = rng.random_range(1..=1000);
         let some_adj: f64 = 80.0;
         let galaxy = Galaxy::from_random_distribution(count, some_adj);
 
@@ -603,4 +633,13 @@ mod tests {
             assert!(eq_planets(&pre_galaxy.planets[i], &post_galaxy.planets[i]), "All planets in post are equal in pre unchanged");
         }
     }
+    
+/*  //Enable this test if tou want to iterate something until it breaks
+    #[test]
+    fn brute_inconsisten_test() {
+        loop {
+            tests::test_rand_gen_no_cloning();
+        }
+    }
+ */
 }
