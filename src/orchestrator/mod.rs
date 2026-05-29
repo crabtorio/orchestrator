@@ -2,11 +2,11 @@ use crate::galaxy_generator::{Galaxy, PlanetContainer};
 use common_game::components::asteroid::Asteroid;
 use common_game::components::planet::DummyPlanetState;
 use common_game::components::sunray::Sunray;
+use common_game::protocols::orchestrator_planet::PlanetToOrchestrator::AsteroidAck;
 use common_game::{
     protocols::{orchestrator_planet, planet_explorer},
     utils::ID,
 };
-use luna4::planet::PlanetToOrchestrator::AsteroidAck;
 use orchestrator_planet::{OrchestratorToPlanet, PlanetToOrchestrator};
 use std::{
     collections::HashMap,
