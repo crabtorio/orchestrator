@@ -49,7 +49,6 @@ use rand::distr::Distribution;
 use rand_distr::StandardNormal;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
-
 use std::sync::{Arc, Mutex};
 
 pub struct Galaxy {
@@ -75,16 +74,15 @@ impl PlanetContainer {
         self.handling_id
     }
     //new is the WIP creation, since the only values accessed is handler_id and adj, either being discardable or initialized at empty
-    fn new(id: &mut ID) -> Self {
-        *id += 1;
+    fn new(id: ID) -> Self {
         let vendor: PlanetVendor = rand::rng().sample(StandardNormal);
         let (tp1, rp1) = crossbeam_channel::unbounded();
         let (tp2, rp2) = crossbeam_channel::unbounded();
         let (te, re) = crossbeam_channel::unbounded();
         PlanetContainer {
             vendor,
-            planet: PlanetContainer::get_planet(vendor, rp1, tp2, re, *id - 1),
-            handling_id: *id - 1,
+            planet: PlanetContainer::get_planet(vendor, rp1, tp2, re, id),
+            handling_id: id,
             adj: Vec::new(),
             tx_planet: tp1,
             rx_planet: rp2,
@@ -141,11 +139,11 @@ impl PlanetContainer {
     pub fn isolate(&mut self) {
         for i in self.adj.iter() {
             //For all adjacent planets
-            for ii in 0..i.lock().unwrap().adj.len() {
+            let mut other_plt = i.lock().unwrap();
+            for ii in 0..other_plt.adj.len() {
                 //Look through their adjacencies
-                if self.handling_id == i.lock().unwrap().adj[ii].lock().unwrap().handling_id {
-                    //when finds self
-                    i.lock().unwrap().adj.remove(ii); //remove from list
+                if self.handling_id == other_plt.adj[ii].lock().unwrap().handling_id { //when finds self //Lock might still be problematic, will see later
+                    other_plt.adj.remove(ii); //remove from list
                 }
             }
         }
@@ -203,14 +201,15 @@ impl Galaxy {
             }
         }
         struct CoordContainer {
-            plnt: Arc<Mutex<PlanetContainer>>,
+            id: ID,
+            adj: Vec<ID>,
             c: Coords,
         } //Encapsulation step, comes with a few useful methods
-
         impl CoordContainer {
-            fn new(plnt: Arc<Mutex<PlanetContainer>>) -> Self {
+            fn new(id: ID) -> Self {
                 CoordContainer {
-                    plnt,
+                    id,
+                    adj: Vec::new(),
                     c: Coords::new(),
                 }
             }
@@ -221,7 +220,7 @@ impl Galaxy {
         }
         impl PartialEq for CoordContainer {
             fn eq(&self, other: &Self) -> bool {
-                self.plnt.lock().unwrap().handling_id == other.plnt.lock().unwrap().handling_id
+                self.id == other.id
             }
         }
 
@@ -230,7 +229,8 @@ impl Galaxy {
         impl Clone for CoordContainer {
             fn clone(&self) -> Self {
                 CoordContainer {
-                    plnt: self.plnt.clone(),
+                    id: self.id,
+                    adj: self.adj.clone(),
                     c: self.c.clone(),
                 }
             }
@@ -238,23 +238,23 @@ impl Galaxy {
 
         impl Hash for CoordContainer {
             fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-                self.plnt.lock().unwrap().handling_id.hash(state);
+                self.id.hash(state);
             }
         }
 
         struct LateBinding {
-            p1: Arc<Mutex<PlanetContainer>>,
-            p2: Arc<Mutex<PlanetContainer>>,
+            p1: ID,
+            p2: ID,
         }
 
         impl LateBinding {
-            fn new(p1: Arc<Mutex<PlanetContainer>>, p2: Arc<Mutex<PlanetContainer>>) -> Self {
-                LateBinding { p1, p2 }
+            fn new(p1: ID, p2: ID) -> Self {
+                LateBinding { p1, p2}
             }
 
-            fn resolve(self) {
-                self.p1.lock().unwrap().adj.push(self.p2.clone());
-                self.p2.lock().unwrap().adj.push(self.p1);
+            fn resolve(self, containers: &mut Vec<CoordContainer>) {
+                containers[self.p1 as usize].adj.push(self.p2);
+                containers[self.p2 as usize].adj.push(self.p1);
             }
         }
 
@@ -266,12 +266,7 @@ impl Galaxy {
             _ => (expected_percentage - 95.0) / (99.0 - 95.0) + 2.0, //Second line, from 2 and passes through 3 but with no upper bound
         };
 
-        let mut in_set = HashSet::new();
-        let mut out_set = HashMap::new();
-        let mut lag_set = HashSet::new();
-
-        const IDSTART: ID = 1;
-        let mut id_count = IDSTART;
+        let mut hold_vec = Vec::new();
 
         if planet_count == 0 {
             return Galaxy {
@@ -279,81 +274,98 @@ impl Galaxy {
             };
         } //Early out for no-planet galaxy
 
-        for _ in 0..planet_count {
-            let new_planet = PlanetContainer::new(&mut id_count);
-            out_set.insert(
-                new_planet.handling_id,
-                CoordContainer::new(Arc::new(Mutex::new(new_planet))),
-            ); //Birth of the planets, from random
+        for i in 0..planet_count {
+            hold_vec.push(CoordContainer::new(i as ID));
         }
 
-        for i in out_set.values() {
-            for ii in out_set.values() {
-                let dist = i.get_dist(ii);
-                if dist <= adj_size && i != ii {
-                    //Makes sure the planet is not adjacent to itself
-                    i.plnt.lock().unwrap().adj.push(ii.plnt.clone()); //Simple adjacency, the prim algorithm later will sort out
+        for i in 0..planet_count as usize {
+            for ii in 0..planet_count as usize {
+                let dist = hold_vec[i].get_dist(&hold_vec[ii]);
+                if i != ii && dist <= adj_size { //Makes sure the planet is not adjacent to self
+                    hold_vec[i].adj.push(ii as ID); //Simple adjacency, the following algorithm will guarantee connectedness
                 }
             }
         }
 
-        in_set.insert(out_set.remove(&IDSTART).unwrap()); //Again, under any sane circumstance this should be Some
+        let mut in_set = HashSet::new();
+        let mut out_set = HashSet::new();
+        let mut lag_set = HashSet::new();
+
+        in_set.insert(0usize);
+        for i in 1..planet_count as usize { //preload non-cleared set
+            out_set.insert(i);
+        }
+
         let mut late_queue = Vec::new(); //Deferring the de-orphaning to  the last step saves some calculations by reducing the size of the expansion necessary of a temp set
-        while !out_set.is_empty() {
-            //By running the out_set to the ground we are sure there are no orphans left
+
+        while !out_set.is_empty() { //By running the out_set to the ground we are sure there are no orphans left
+
             let mut has_updated = true;
+
             while has_updated {
                 has_updated = false;
                 let temp_set = in_set.clone(); //The temp set is necessary because the iterator doesn't like to have its set touched
                 for i in temp_set.difference(&lag_set) {
-                    for ii in i.plnt.lock().unwrap().adj.iter() {
-                        let maybe_entry = out_set.remove(&ii.lock().unwrap().handling_id);
-                        match maybe_entry {
-                            None => {}
-                            Some(entry) => {
-                                has_updated = in_set.insert(entry) || has_updated;
-                            } //The OR preserves true results, and the Option allows us to remove everything willy nilly
-                        }
+                    for ii in hold_vec[i.clone()].adj.iter() {
+                        let pos = ii.clone() as usize;
+                        in_set.insert(pos);
+                        has_updated =  out_set.remove(&pos); || has_updated; //The OR preserves true results
                     }
                 }
                 lag_set = temp_set;
             }
-            if !out_set.is_empty() {
-                //Double-check the last expansion hasn't depleted the out_sets
+
+            if !out_set.is_empty() { //Double-check the last expansion hasn't depleted the out_sets
+
                 let min_dist = f64::INFINITY; //Since this is infinity all values should be smaller, effectively guaranteeing at least one true later
                 let mut a = None; //Options to make Rust not cry
                 let mut b = None;
                 let mut c = None;
                 for i in in_set.iter() {
-                    for ii in out_set.values() {
-                        let dist = i.get_dist(ii);
+                    for ii in out_set.iter() {
+                        let dist = hold_vec[*i].get_dist(&hold_vec[*ii]);
                         if dist < min_dist {
-                            a = Some(i.plnt.clone());
-                            b = Some(ii.plnt.clone());
+                            a = Some(i.clone());
+                            b = Some(ii.clone());
                             c = Some(ii.clone()); //Third copy just for comfort, could be optimized away by unwrapping and extracting data earlier, but this is nicer
                         }
                     }
                 }
-                late_queue.push(LateBinding::new(a.unwrap(), b.unwrap().clone())); //I am once again reminding you that it would be very concerning for either to be None
-                let temp = c.unwrap();
-                out_set.remove(&temp.plnt.lock().unwrap().handling_id);
-                in_set.insert(temp);
+
+
+                late_queue.push(LateBinding::new(a.unwrap() as ID, b.unwrap() as ID)); //I am once again reminding you that it would be very concerning for either to be None
+                out_set.remove(&c.unwrap());
+                in_set.insert(c.unwrap());
             }
         }
+
         while !late_queue.is_empty() {
-            late_queue.pop().unwrap().resolve(); //Resolves all the outstanding late bindings, using the nice method I made earlier
+            late_queue.pop().unwrap().resolve(&mut hold_vec); //Resolves all the outstanding late bindings, using the nice method I made earlier
         }
+
+        let mut conversion_array = Vec::new();
         let mut ending_set = HashMap::new(); //Return to hashmap because the extra bits actually matter now
-        for i in in_set.drain() {
-            let temp = i.plnt.lock().unwrap().handling_id;
-            ending_set.insert(temp, i.plnt);
+
+        for i in 0..planet_count as usize {
+            conversion_array.push(Arc::new(Mutex::new(PlanetContainer::new(hold_vec[i].id))));
+        }
+
+        for i in 0..planet_count as usize {
+            let mut planet = conversion_array[i].lock().unwrap(); //get the mutexGuard of the element to prepare adjacencies to
+            for ii in hold_vec[i].adj.iter() { //Iterate over all the pre-prepared adjacencies
+                let pos = ii.clone() as usize;  //Indexing things is just so nice
+                planet.adj.push(conversion_array[pos].clone()); //Clone the arc to put in the ajd vector
+            }
+        } //Lock lost here?
+
+        for i in 0..planet_count as usize {
+            ending_set.insert(hold_vec[i].id, conversion_array[i].clone()); //Insert all the arcs in the ending set with respective ids
         }
 
         Galaxy {
             planets: ending_set,
         }
     }
-
     pub fn drop_planet(&mut self, id: ID) {
         self.planets[&id].lock().unwrap().isolate(); //First isolate planet to remove all references to it
         //Is some AI shutdown needed? Goes here
@@ -465,7 +477,6 @@ impl<'de> Deserialize<'de> for Galaxy {
 mod tests {
     use super::*;
     use rand_distr::num_traits::ToPrimitive;
-    use std::ops::Deref;
 
     #[test]
     fn test_rand_gen_count_and_spanning() {
@@ -477,25 +488,30 @@ mod tests {
 
         assert_eq!(count, galaxy.planets.iter().count().to_i32().unwrap()); //Also technically checks if the i32 used to make planets somehow made more than an i32 can fit
 
-        let connected_punchcard: Arc<Mutex<HashSet<ID>>> = Arc::new(Mutex::new(HashSet::new()));
-        let starting = galaxy.planets.get(&1).unwrap().clone();
-        fn recursive_expl(punch: Arc<Mutex<HashSet<ID>>>, cur: Arc<Mutex<PlanetContainer>>) {
-            //Function loads into a container all the nodes connected to one
-            if punch
-                .lock()
-                .unwrap()
-                .insert(cur.lock().unwrap().handling_id)
-            {
-                for i in cur.lock().unwrap().adj.iter() {
-                    recursive_expl(punch.clone(), i.clone());
+        let mut punch_card = HashSet::new();
+        fn recursive_search(current: ID, galaxy: &Galaxy, punch_card: &mut HashSet<ID>) {
+            let unvisited = punch_card.insert(current); //See if already visited
+            if unvisited {
+
+                let mut candidates = Vec::new();
+
+                {
+                    let lock = galaxy.planets[&current].lock().unwrap(); //Lock to look inside
+                    for i in lock.adj.iter() {
+                        let adj_lock = i.lock().unwrap(); //Look into neighbors
+                        candidates.push(adj_lock.handling_id); //Put their IDs in the next list
+                    }
+                }//Extra scope to make sure the locks die in the meantime
+
+                for i in candidates{
+                    recursive_search(i, galaxy, punch_card); //Ideally since the locks are already out-of-scope there should be no eternal spins
                 }
             }
         }
 
-        recursive_expl(connected_punchcard.clone(), starting);
-        for i in galaxy.planets.keys() {
-            assert!(connected_punchcard.lock().unwrap().contains(i)); //If there's an ID in the galaxy and not the punchcard, something's missing
-        }
+        recursive_search(1, &galaxy, &mut punch_card);
+
+        assert_eq!(punch_card.len(), count as usize, "All planets connected");
     }
 
     #[test]
@@ -507,16 +523,24 @@ mod tests {
         let galaxy = Galaxy::from_random_distribution(count, some_adj);
 
         for i in galaxy.planets.values() {
-            for ii in 0..i.lock().unwrap().adj.len() {
+            let planet = i.lock().unwrap();
+            for ii in 0..planet.adj.len() {
+                let adj = planet.adj[ii].lock().unwrap();
                 assert_ne!(
-                    i.lock().unwrap().handling_id,
-                    i.lock().unwrap().adj[ii].lock().unwrap().handling_id
-                ); //No self reference
-                for iii in ii + 1..i.lock().unwrap().adj.len() {
-                    assert_ne!(
-                        i.lock().unwrap().adj[ii].lock().unwrap().handling_id,
-                        i.lock().unwrap().adj[iii].lock().unwrap().handling_id
-                    ); //No duplicates
+                    planet.handling_id,
+                    adj.handling_id,
+                    "No self adjacence"
+                );
+            }
+        }
+
+        for i in galaxy.planets.values() {
+            let planet = i.lock().unwrap();
+            for ii in 0..planet.adj.len() {
+                for iii in 0..planet.adj.len() {
+                    if ii != iii {
+                        assert!(!Arc::ptr_eq(&planet.adj[ii], &planet.adj[iii]), "All unique")
+                    }
                 }
             }
         }
@@ -531,51 +555,52 @@ mod tests {
         let some_adj: f64 = 80.0;
         let galaxy = Galaxy::from_random_distribution(count, some_adj);
 
-        for i in galaxy.planets.values() {
-            //For every planet A
-            for ii in i.lock().unwrap().adj.iter() {
-                //For every planet B: A->B
+        for i in galaxy.planets.values() { //For every planet A
+            for ii in i.lock().unwrap().adj.iter() { //For every planet B: A->B
                 let mut has_self = false;
-                for iii in ii.lock().unwrap().adj.iter() {
-                    //For every planet C: B->C
-                    has_self = iii.lock().unwrap().handling_id == i.lock().unwrap().handling_id
-                        || has_self; //Check A == C
+                let mut planet = ii.lock().unwrap();
+                for iii in planet.adj.iter() {//For every planet C: B->C
+                    has_self = Arc::ptr_eq(iii, i) || has_self; //Check A == C
                 }
-                assert!(has_self);
+                assert!(has_self, "Edge is symmetric");
             }
         }
     }
 
     #[test]
     fn test_serialize_deserialize() {
+
         let pre_galaxy = Galaxy::from_random_distribution(1000, 80.0);
+
         let jstr = serde_json::to_string(&pre_galaxy)
             .expect("A galaxy should always be json-serializeable");
         let post_galaxy: Galaxy = serde_json::from_str::<Galaxy>(&jstr.as_str())
             .expect("A valid json galaxy should always be deserializeable");
 
-        let mut accumulator: bool = true;
+        fn eq_planets(pl1: &Arc<Mutex<PlanetContainer>>, pl2: &Arc<Mutex<PlanetContainer>>) -> bool {
+            fn gather_data(pl:&Arc<Mutex<PlanetContainer>>) -> (PlanetVendor, ID, HashSet<ID>) {
+                let lock = pl.lock().unwrap();
+                let vendor = lock.vendor.clone();
+                let id = lock.handling_id.clone();
+                let mut adj_ids = HashSet::new();
+
+                for i in lock.adj.iter() {
+                    adj_ids.insert(i.lock().unwrap().handling_id);
+                }
+
+                (vendor, id, adj_ids)
+
+            }
+
+            gather_data(pl1) == gather_data(pl2)
+        }
 
         for i in pre_galaxy.planets.keys() {
-            accumulator = pre_galaxy.planets[i].lock().unwrap().deref()
-                == post_galaxy.planets[i].lock().unwrap().deref()
-                && accumulator;
+            assert!(eq_planets(&pre_galaxy.planets[i], &post_galaxy.planets[i]), "All planets in pre are equal in post unchanged");
         }
-
-        assert!(
-            accumulator,
-            "A galaxy should not be modified during serialization or deserialization (injectivity)"
-        );
 
         for i in post_galaxy.planets.keys() {
-            accumulator = pre_galaxy.planets[i].lock().unwrap().deref()
-                == post_galaxy.planets[i].lock().unwrap().deref()
-                && accumulator;
+            assert!(eq_planets(&pre_galaxy.planets[i], &post_galaxy.planets[i]), "All planets in post are equal in pre unchanged");
         }
-
-        assert!(
-            accumulator,
-            "A galaxy should not be modified during serialization or deserialization (surjectivity)"
-        )
     }
 }
