@@ -1,4 +1,5 @@
 use crate::galaxy_generator::{Galaxy, PlanetContainer};
+use crate::orchestrator::ai::Ai;
 use common_game::components::asteroid::Asteroid;
 use common_game::components::planet::DummyPlanetState;
 use common_game::components::sunray::Sunray;
@@ -13,10 +14,10 @@ use std::{
     sync::{Arc, Mutex},
     thread::{self, JoinHandle},
 };
-//pub mod ai;
+pub mod ai;
 pub struct Orchestrator {
     galaxy: Galaxy,
-    auto: bool,
+    ai: Box<dyn Ai>,
 }
 struct PlanetHandle {
     id: ID,
@@ -24,6 +25,28 @@ struct PlanetHandle {
     tx_planet: crossbeam_channel::Sender<orchestrator_planet::OrchestratorToPlanet>,
     rx_planet: crossbeam_channel::Receiver<orchestrator_planet::PlanetToOrchestrator>,
     tx_explorer: crossbeam_channel::Sender<planet_explorer::ExplorerToPlanet>,
+}
+impl Orchestrator {
+    pub fn new(galaxy: Galaxy, ai: Box<dyn Ai>) -> Self {
+        Orchestrator { galaxy, ai }
+    }
+    pub fn run(&mut self) {
+        let planet_handles: HashMap<ID, PlanetHandle> = self
+            .galaxy
+            .iter()
+            .map(|planet| {
+                let id = planet.lock().unwrap().id();
+                (id, PlanetHandle::spawn(planet.clone()))
+            })
+            .collect();
+
+        self.ai.run(&planet_handles);
+
+        // Join all threads
+        for (_, handle) in planet_handles {
+            handle.join_thread();
+        }
+    }
 }
 impl PlanetHandle {
     fn spawn(planet: Arc<Mutex<PlanetContainer>>) -> Self {
@@ -248,44 +271,6 @@ impl PlanetHandle {
         match self.handle.join() {
             Ok(()) => (),
             Err(_) => log::error!("Could not join thread of planet {}", self.id),
-        }
-    }
-}
-impl Orchestrator {
-    pub fn new(galaxy: Galaxy, auto: bool) -> Self {
-        Orchestrator { galaxy, auto }
-    }
-    pub fn run(&mut self) {
-        if self.auto {
-            let planet_handles: HashMap<ID, PlanetHandle> = self
-                .galaxy
-                .iter()
-                .map(|planet| {
-                    let id = planet.lock().unwrap().id();
-                    (id, PlanetHandle::spawn(planet.clone()))
-                })
-                .collect();
-
-            // Start all planets
-            for (_, handle) in &planet_handles {
-                handle.start_planet();
-            }
-
-            // Stop all planets
-            for (_, handle) in &planet_handles {
-                handle.stop_planet();
-            }
-
-            // Kill all planets
-            for (_, handle) in &planet_handles {
-                handle.kill_planet();
-            }
-
-            // Join all planet threads
-            for (_, handle) in planet_handles {
-                handle.join_thread();
-            }
-        } else {
         }
     }
 }

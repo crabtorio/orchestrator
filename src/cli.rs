@@ -1,4 +1,10 @@
-use crate::{galaxy_generator::Galaxy, orchestrator::Orchestrator};
+use crate::{
+    galaxy_generator::Galaxy,
+    orchestrator::{
+        Orchestrator,
+        ai::{Ai, Auto, Manual},
+    },
+};
 use clap::{Parser, Subcommand, ValueEnum};
 use std::{
     fs::{create_dir_all, read_to_string, write},
@@ -53,9 +59,9 @@ impl Command {
             Command::Run { galaxy_name, mode } => {
                 let galaxy_str = read_to_string(format!("./galaxies/{}.json", galaxy_name))?;
                 let galaxy: Galaxy = serde_json::from_str(&galaxy_str)?;
-                let mode = match mode {
-                    AiModeCommand::Manual => false,
-                    AiModeCommand::Auto => true,
+                let mode: Box<dyn Ai> = match mode {
+                    AiModeCommand::Manual => Box::new(Manual),
+                    AiModeCommand::Auto => Box::new(Auto),
                 };
                 Ok(CommandResult::Running(Orchestrator::new(galaxy, mode)))
             }
