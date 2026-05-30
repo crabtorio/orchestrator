@@ -386,31 +386,7 @@ impl Serialize for Galaxy {
         for (planet_id, planet) in &self.planets {
             let lock = planet.lock().unwrap();
 
-            /* let adjacencies = lock
-                .adj
-                .iter()
-                .map(|adj_planet| {
-                    self.planets
-                        .iter()
-                        .find_map(|(pid, p)| {
-                            if p.lock().unwrap().handling_id
-                                == adj_planet.lock().unwrap().handling_id
-                            {
-                                Some(*pid)
-                            } else {
-                                None
-                            }
-                        })
-                        .expect("Planet must be in Galaxy")
-                })
-                .collect();
-            */ //Not sure how the code is supposed to work, so in the meantime I remade it under here
-
             let adjacencies = lock.adj.iter().map(|adj_planet| {adj_planet.lock().unwrap().handling_id}).collect();
-
-            for i in &adjacencies {
-                assert_eq!(self.planets[i].lock().unwrap().handling_id, *i, "Planet must be in galaxy");
-            }
 
             seq.serialize_element(&PlanetEntry {
                 planet_id: *planet_id,
