@@ -1,17 +1,9 @@
-use crate::orchestrator::PlanetHandle;
+use crate::orchestrator::{Command, PlanetHandle};
 use common_game::utils::ID;
 use std::collections::HashMap;
 
 pub trait Ai {
     fn run(&self, planet_handles: &HashMap<ID, PlanetHandle>);
-}
-
-pub struct Manual;
-
-impl Ai for Manual {
-    fn run(&self, planet_handles: &HashMap<ID, PlanetHandle>) {
-        //Todo
-    }
 }
 
 pub struct Auto;

@@ -1,24 +1,20 @@
-use crate::{
-    galaxy_generator::Galaxy,
-    orchestrator::{
-        Orchestrator,
-        ai::{Ai, Auto, Manual},
-    },
-};
+use crate::{galaxy_generator::Galaxy, orchestrator::Orchestrator};
 use clap::{Parser, Subcommand, ValueEnum};
 use std::{
+    collections::VecDeque,
     fs::{create_dir_all, read_to_string, write},
     io::Error,
+    sync::{Arc, Mutex},
 };
 
 #[derive(Parser)]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Command,
+    pub command: ClapCommand,
 }
 
 #[derive(Subcommand)]
-pub enum Command {
+pub enum ClapCommand {
     Generate {
         name: String,
         #[arg(default_value_t = 7)]
@@ -28,7 +24,6 @@ pub enum Command {
     },
     Run {
         galaxy_name: String,
-        mode: AiModeCommand,
     },
 }
 
@@ -41,10 +36,10 @@ pub enum CommandResult {
     Generated,
     Running(Orchestrator),
 }
-impl Command {
+impl ClapCommand {
     pub fn run(self) -> Result<CommandResult, Error> {
         match self {
-            Command::Generate {
+            ClapCommand::Generate {
                 name: galaxy_name,
                 planet_count,
                 expected_percentage,
@@ -56,14 +51,14 @@ impl Command {
                 write(format!("./galaxies/{}.json", galaxy_name), json)?;
                 Ok(CommandResult::Generated)
             }
-            Command::Run { galaxy_name, mode } => {
+            ClapCommand::Run { galaxy_name } => {
                 let galaxy_str = read_to_string(format!("./galaxies/{}.json", galaxy_name))?;
                 let galaxy: Galaxy = serde_json::from_str(&galaxy_str)?;
-                let mode: Box<dyn Ai> = match mode {
-                    AiModeCommand::Manual => Box::new(Manual),
-                    AiModeCommand::Auto => Box::new(Auto),
-                };
-                Ok(CommandResult::Running(Orchestrator::new(galaxy, mode)))
+                Ok(CommandResult::Running(Orchestrator::new(
+                    galaxy,
+                    Arc::new(Mutex::new(VecDeque::new())),
+                    Arc::new(Mutex::new(VecDeque::new())),
+                )))
             }
         }
     }

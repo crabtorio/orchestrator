@@ -1,4 +1,5 @@
 use crate::galaxy_generator::{Galaxy, PlanetContainer};
+use crate::orchestrator::Command::{Exit, StartPlanet};
 use crate::orchestrator::ai::Ai;
 use common_game::components::asteroid::Asteroid;
 use common_game::components::planet::DummyPlanetState;
@@ -9,26 +10,60 @@ use common_game::{
     utils::ID,
 };
 use orchestrator_planet::{OrchestratorToPlanet, PlanetToOrchestrator};
+use std::collections::VecDeque;
+use std::thread::sleep;
+use std::time::Duration;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
     thread::{self, JoinHandle},
 };
 pub mod ai;
+mod shell;
 pub struct Orchestrator {
     galaxy: Galaxy,
-    ai: Box<dyn Ai>,
+    // ai: Box<dyn Ai>, Not needed anymore, as there may be more than one AI
+    ai_queue: Arc<Mutex<VecDeque<Command>>>,
+    user_queue: Arc<Mutex<VecDeque<Command>>>,
 }
-struct PlanetHandle {
+pub struct AiHandle {
+    id: ID,
+    handle: JoinHandle<()>,
+    // we could potentially add corssbeam channels to communicate with the AI if we ever wanted
+}
+pub struct PlanetHandle {
     id: ID,
     handle: JoinHandle<()>,
     tx_planet: crossbeam_channel::Sender<orchestrator_planet::OrchestratorToPlanet>,
     rx_planet: crossbeam_channel::Receiver<orchestrator_planet::PlanetToOrchestrator>,
     tx_explorer: crossbeam_channel::Sender<planet_explorer::ExplorerToPlanet>,
 }
+pub enum Command {
+    StartPlanet(ID),
+    StartAllPlanets,
+    StopPlanet(ID),
+    StopAllPlanets,
+    KillPlanet(ID),
+    SendSunray(ID),
+    SendAsteroid(ID),
+    InternalStateRequest(ID),
+    SpawnAi(Box<dyn Ai>),
+    ShowAis,    // Also shows AI IDs
+    KillAi(ID), // ai_handles ID
+    Exit,
+}
+
 impl Orchestrator {
-    pub fn new(galaxy: Galaxy, ai: Box<dyn Ai>) -> Self {
-        Orchestrator { galaxy, ai }
+    pub fn new(
+        galaxy: Galaxy,
+        ai_queue: Arc<Mutex<VecDeque<Command>>>,
+        user_queue: Arc<Mutex<VecDeque<Command>>>,
+    ) -> Self {
+        Orchestrator {
+            galaxy,
+            ai_queue,
+            user_queue,
+        }
     }
     pub fn run(&mut self) {
         let planet_handles: HashMap<ID, PlanetHandle> = self
@@ -39,8 +74,32 @@ impl Orchestrator {
                 (id, PlanetHandle::spawn(planet.clone()))
             })
             .collect();
+        let ai_handles: HashMap<ID, AiHandle>;
 
-        self.ai.run(&planet_handles);
+        loop {
+            sleep(Duration::from_millis(50));
+            let next_command = {
+                if self.user_queue.lock().unwrap().is_empty() {
+                    if let Some(command) = self.ai_queue.lock().unwrap().pop_front() {
+                        command
+                    } else {
+                        continue;
+                    }
+                } else {
+                    if let Some(command) = self.user_queue.lock().unwrap().pop_front() {
+                        command
+                    } else {
+                        continue;
+                    }
+                }
+            };
+
+            match next_command {
+                Exit => break,
+                StartPlanet(id) => planet_handles[&id].start_planet(),
+                _ => (), // To fill
+            }
+        }
 
         // Join all threads
         for (_, handle) in planet_handles {
