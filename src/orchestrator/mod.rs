@@ -1,6 +1,7 @@
 use crate::galaxy_generator::{Galaxy, PlanetContainer};
 use crate::orchestrator::Command::{Exit, StartPlanet};
 use crate::orchestrator::ai::Ai;
+use crate::orchestrator::shell::Shell;
 use common_game::components::asteroid::Asteroid;
 use common_game::components::planet::DummyPlanetState;
 use common_game::components::sunray::Sunray;
@@ -11,6 +12,8 @@ use common_game::{
 };
 use orchestrator_planet::{OrchestratorToPlanet, PlanetToOrchestrator};
 use std::collections::VecDeque;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering::Relaxed;
 use std::thread::sleep;
 use std::time::Duration;
 use std::{
@@ -29,7 +32,8 @@ pub struct Orchestrator {
 pub struct AiHandle {
     id: ID,
     handle: JoinHandle<()>,
-    // we could potentially add corssbeam channels to communicate with the AI if we ever wanted
+    run_flag: Arc<AtomicBool>, // Ais will check periodically this flag and return if false. Only way to stop a thread from the outside
+                               // We could potentially add corssbeam channels to communicate with the AI if we ever wanted
 }
 pub struct PlanetHandle {
     id: ID,
@@ -39,6 +43,7 @@ pub struct PlanetHandle {
     tx_explorer: crossbeam_channel::Sender<planet_explorer::ExplorerToPlanet>,
 }
 pub enum Command {
+    // Explorer commands missing
     StartPlanet(ID),
     StartAllPlanets,
     StopPlanet(ID),
@@ -76,6 +81,10 @@ impl Orchestrator {
             .collect();
         let ai_handles: HashMap<ID, AiHandle>;
 
+        let shell_run_flag = Arc::new(AtomicBool::new(true));
+        let shell = Shell::new(self.user_queue.clone(), shell_run_flag.clone());
+        let shell_handle = thread::spawn(move || shell.run());
+
         loop {
             sleep(Duration::from_millis(50));
             let next_command = {
@@ -93,7 +102,6 @@ impl Orchestrator {
                     }
                 }
             };
-
             match next_command {
                 Exit => break,
                 StartPlanet(id) => planet_handles[&id].start_planet(),
@@ -101,8 +109,20 @@ impl Orchestrator {
             }
         }
 
-        // Join all threads
+        // Kill shell
+        shell_run_flag.store(false, Relaxed);
+
+        //This is for debug, planets should be started, stopped and killed by the user. The only thing that stays below is the thread joining
+
+        // Start all planets
+        for (_, handle) in &planet_handles {
+            handle.start_planet();
+        }
+
+        // Stop and kill planets then join the thread
         for (_, handle) in planet_handles {
+            handle.stop_planet();
+            handle.kill_planet();
             handle.join_thread();
         }
     }
