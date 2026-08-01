@@ -9,7 +9,7 @@ use std::{
 
 use common_game::utils::ID;
 
-use crate::orchestrator::Command::{self, Exit};
+use crate::orchestrator::Command::{self, Exit, StartAllPlanets, StartPlanet};
 
 pub struct Shell {
     user_queue: Arc<Mutex<VecDeque<Command>>>,
@@ -31,7 +31,7 @@ impl Shell {
             if let Ok(_) = io::stdin().read_line(&mut input) {
                 // May need to make the read_line non-blocking, so that the flag is checked periodically using a timer.
                 // Though during testing the orchestrator is faster at modyfing the run_flag than the shell is at reading it
-                match parse_command(&input.trim()) {
+                match parse_command(input.trim().to_string()) {
                     Ok(command) => {
                         self.user_queue.lock().unwrap().push_back(command);
                     }
@@ -47,24 +47,37 @@ impl Shell {
         }
     }
 }
-fn parse_command(input: &str) -> Result<Command, String> {
-    let mut parts = input.rsplit(" ");
-    let command = parts.next().unwrap_or("").to_lowercase();
-    let arguments: Vec<&str> = parts.collect();
+fn parse_command(mut input: String) -> Result<Command, String> {
+    input.make_ascii_lowercase();
+    let parts: Vec<&str> = input.split_whitespace().collect();
+    let command = parts[0];
 
-    match command.as_str() {
+    let arguments = &parts[1..];
+
+    match command {
+        "startallplanets" => Ok(StartAllPlanets),
         "exit" => Ok(Exit),
-        "startplanet" => Ok(start_planet(arguments)?),
-        _ => Err(format!("Command '{}' doesn't exist", command)),
+        "startplanet" => {
+            print!("dsaas: {:?}", arguments[0].parse::<ID>());
+            Ok(StartPlanet(
+                arguments[0].parse::<ID>().map_err(|err| err.to_string())?,
+            ))
+        }
+        _ => Err(format!("Command '{}' is invalid", command)),
     }
 }
-fn start_planet(arguments: Vec<&str>) -> Result<Command, String> {
-    if let Some(id) = arguments.get(0) {
-        Ok(Command::StartPlanet(match id.parse::<ID>() {
-            Ok(id) => id,
-            Err(error) => return Err(error.to_string()),
-        }))
-    } else {
-        Err(String::from("No argument found"))
+
+#[cfg(test)]
+mod test {
+    use super::parse_command;
+    use crate::orchestrator::Command;
+
+    #[test]
+    fn test_parse_command() {
+        let test1 = parse_command("startallplanets".to_string());
+        let test2 = parse_command("StartPlanet 102".to_string());
+
+        assert!(matches!(test1, Ok(Command::StartAllPlanets)));
+        assert!(matches!(test2, Ok(Command::StartPlanet(102))));
     }
 }
