@@ -25,7 +25,6 @@ pub mod ai;
 mod shell;
 pub struct Orchestrator {
     galaxy: Galaxy,
-    // ai: Box<dyn Ai>, Not needed anymore, as there may be more than one AI
     ai_queue: Arc<Mutex<VecDeque<Command>>>,
     user_queue: Arc<Mutex<VecDeque<Command>>>,
 }
@@ -77,6 +76,7 @@ pub enum Command {
     InternalStateRequest(ID),
 
     // Orchestrator AI
+    SpawnShell,
     SpawnAi(Box<dyn Ai>),
     KillAi(ID),     // ai_handles ID
     ShowRunningAis, // Also shows AI IDs
