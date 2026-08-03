@@ -42,19 +42,44 @@ pub struct PlanetHandle {
     rx_planet: crossbeam_channel::Receiver<orchestrator_planet::PlanetToOrchestrator>,
     tx_explorer: crossbeam_channel::Sender<planet_explorer::ExplorerToPlanet>,
 }
+pub enum ExplorerID {
+    First,
+    Second,
+}
 pub enum Command {
-    // Explorer commands missing
-    StartPlanet(ID),
+    // Explorer
+    StartExplorers,
+    StopExplorers,
+    KillExplorers,
+    ResetExplorers,
+    StartExplorer(ExplorerID),
+    StopExplorer(ExplorerID),
+    KillExplorer(ExplorerID),
+    ResetExplorer(ExplorerID),
+    MoveExplorer { planet_id: ID, explorer: ExplorerID },
+    // Manual mode explorer
+    CurrentPlanetRequest(ExplorerID),
+    SupportedResourceReques(ExplorerID),
+    SupportedCombinationRequest(ExplorerID),
+    GenerateResourceRequest(ExplorerID),
+    CombineResourceRequest(ExplorerID),
+    BagContentRquest(ExplorerID),
+
+    // Planet
     StartAllPlanets,
-    StopPlanet(ID),
     StopAllPlanets,
+    KillAllPlanets,
+    StartPlanet(ID),
+    StopPlanet(ID),
     KillPlanet(ID),
     SendSunray(ID),
     SendAsteroid(ID),
     InternalStateRequest(ID),
+
+    // Orchestrator AI
     SpawnAi(Box<dyn Ai>),
-    ShowAis,    // Also shows AI IDs
-    KillAi(ID), // ai_handles ID
+    KillAi(ID),     // ai_handles ID
+    ShowRunningAis, // Also shows AI IDs
     Exit,
 }
 
@@ -82,7 +107,7 @@ impl Orchestrator {
         let ai_handles: HashMap<ID, AiHandle>;
 
         let shell_run_flag = Arc::new(AtomicBool::new(true));
-        let shell = Shell::new(self.user_queue.clone(), shell_run_flag.clone());
+        let shell = Shell::new(self.user_queue.clone());
         let shell_handle = thread::spawn(move || shell.run());
 
         loop {
