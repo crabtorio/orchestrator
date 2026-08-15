@@ -416,7 +416,7 @@ impl ExplorerHandle {
             OrchestratorToExplorer::ResetExplorerAI, 
             ExplorerToOrchestratorKind::ResetExplorerAIResult
         ) {
-            log::info!("Explorer {} started",self.id)
+            log::info!("Explorer {} reset",self.id)
         }
     }
 
@@ -425,7 +425,7 @@ impl ExplorerHandle {
             OrchestratorToExplorer::StopExplorerAI, 
             ExplorerToOrchestratorKind::StopExplorerAIResult
         ) {
-            log::info!("Explorer {} started",self.id)
+            log::info!("Explorer {} stopped",self.id)
         }
     }
     
