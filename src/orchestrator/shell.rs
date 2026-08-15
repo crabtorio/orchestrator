@@ -25,6 +25,7 @@ impl Shell {
                 match parse_command(input.trim().to_string()) {
                     Ok(command) => {
                         if let Exit = command {
+                            self.user_queue.lock().unwrap().push_back(command);
                             break;
                         }
                         self.user_queue.lock().unwrap().push_back(command);

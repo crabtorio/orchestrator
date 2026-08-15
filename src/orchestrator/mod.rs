@@ -7,15 +7,13 @@ use common_game::components::planet::{self, DummyPlanetState};
 use common_game::components::sunray::Sunray;
 use common_game::protocols::orchestrator_planet::PlanetToOrchestrator::AsteroidAck;
 use common_game::{
-    protocols::{
-        orchestrator_planet, 
-        orchestrator_explorer,
-        planet_explorer
-    },
+    protocols::{orchestrator_explorer, orchestrator_planet, planet_explorer},
     utils::ID,
 };
+use orchestrator_explorer::{
+    ExplorerToOrchestrator, ExplorerToOrchestratorKind, OrchestratorToExplorer,
+};
 use orchestrator_planet::{OrchestratorToPlanet, PlanetToOrchestrator};
-use orchestrator_explorer::{OrchestratorToExplorer, ExplorerToOrchestrator, ExplorerToOrchestratorKind};
 use std::collections::VecDeque;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::Relaxed;
@@ -47,7 +45,7 @@ pub struct PlanetHandle {
     tx_explorer: crossbeam_channel::Sender<planet_explorer::ExplorerToPlanet>,
 }
 
-#[derive(Clone,Copy)]
+#[derive(Clone, Copy)]
 pub enum ExplorerID {
     First = 0,
     Second = 1,
@@ -55,7 +53,10 @@ pub enum ExplorerID {
 
 impl std::fmt::Display for ExplorerID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {ExplorerID::First => "0", ExplorerID::Second => "1"})
+        f.write_str(match self {
+            ExplorerID::First => "0",
+            ExplorerID::Second => "1",
+        })
     }
 }
 
@@ -63,7 +64,7 @@ type Bag = (); //TODO
 
 pub struct ExplorerHandle {
     id: ExplorerID,
-    channel: LoggedChannel<OrchestratorToExplorer,ExplorerToOrchestrator<Bag>>
+    channel: LoggedChannel<OrchestratorToExplorer, ExplorerToOrchestrator<Bag>>,
 }
 
 pub enum Command {
@@ -127,7 +128,6 @@ impl Orchestrator {
             .collect();
         let ai_handles: HashMap<ID, AiHandle>;
 
-        let shell_run_flag = Arc::new(AtomicBool::new(true));
         let shell = Shell::new(self.user_queue.clone());
         let shell_handle = thread::spawn(move || shell.run());
 
@@ -155,9 +155,6 @@ impl Orchestrator {
             }
         }
 
-        // Kill shell
-        shell_run_flag.store(false, Relaxed);
-
         //This is for debug, planets should be started, stopped and killed by the user. The only thing that stays below is the thread joining
 
         // Start all planets
@@ -171,6 +168,7 @@ impl Orchestrator {
             handle.kill_planet();
             handle.join_thread();
         }
+        shell_handle.join();
     }
 }
 impl PlanetHandle {
@@ -401,87 +399,99 @@ impl PlanetHandle {
 }
 
 impl ExplorerHandle {
-    
     fn start_explorer_ai(&self) {
         if let Ok(_) = self.channel.send_and_check_ack(
-            OrchestratorToExplorer::StartExplorerAI, 
-            ExplorerToOrchestratorKind::StopExplorerAIResult
+            OrchestratorToExplorer::StartExplorerAI,
+            ExplorerToOrchestratorKind::StopExplorerAIResult,
         ) {
-            log::info!("Explorer {} started",self.id)
+            log::info!("Explorer {} started", self.id)
         }
     }
-    
+
     fn reset_explorer_ai(&self) {
         if let Ok(_) = self.channel.send_and_check_ack(
-            OrchestratorToExplorer::ResetExplorerAI, 
-            ExplorerToOrchestratorKind::ResetExplorerAIResult
+            OrchestratorToExplorer::ResetExplorerAI,
+            ExplorerToOrchestratorKind::ResetExplorerAIResult,
         ) {
-            log::info!("Explorer {} reset",self.id)
+            log::info!("Explorer {} reset", self.id)
         }
     }
 
     fn stop_explorer_ai(&self) {
         if let Ok(_) = self.channel.send_and_check_ack(
-            OrchestratorToExplorer::StopExplorerAI, 
-            ExplorerToOrchestratorKind::StopExplorerAIResult
+            OrchestratorToExplorer::StopExplorerAI,
+            ExplorerToOrchestratorKind::StopExplorerAIResult,
         ) {
-            log::info!("Explorer {} stopped",self.id)
-        }
-    }
-    
-    fn kill_explorer(&self) {
-        if let Ok(_) = self.channel.send_and_check_ack(
-            OrchestratorToExplorer::KillExplorer, 
-            ExplorerToOrchestratorKind::KillExplorerResult
-        ) {
-            log::info!("Explorer {} killed",self.id)
+            log::info!("Explorer {} stopped", self.id)
         }
     }
 
-    fn move_to_planet(&self, sender: Option<crossbeam_channel::Sender<planet_explorer::ExplorerToPlanet>>, planet_id: ID) {
-        let result = self.channel.send(OrchestratorToExplorer::MoveToPlanet { sender_to_new_planet: sender, planet_id }); 
+    fn kill_explorer(&self) {
+        if let Ok(_) = self.channel.send_and_check_ack(
+            OrchestratorToExplorer::KillExplorer,
+            ExplorerToOrchestratorKind::KillExplorerResult,
+        ) {
+            log::info!("Explorer {} killed", self.id)
+        }
+    }
+
+    fn move_to_planet(
+        &self,
+        sender: Option<crossbeam_channel::Sender<planet_explorer::ExplorerToPlanet>>,
+        planet_id: ID,
+    ) {
+        let result = self.channel.send(OrchestratorToExplorer::MoveToPlanet {
+            sender_to_new_planet: sender,
+            planet_id,
+        });
         if result.is_err() {
-            return 
+            return;
         }
 
         match self.channel.recv() {
             Ok(val) => match val {
-                ExplorerToOrchestrator::MovedToPlanetResult {explorer_id, planet_id: planet_id_resp } => {
+                ExplorerToOrchestrator::MovedToPlanetResult {
+                    explorer_id,
+                    planet_id: planet_id_resp,
+                } => {
                     if explorer_id != self.id as ID {
-                        log::error!("Explorer {:?} returned incohernet ID {:?} when sending {:?}",
+                        log::error!(
+                            "Explorer {:?} returned incohernet ID {:?} when sending {:?}",
                             self.id as ID,
                             explorer_id,
                             planet_id_resp
                         );
-                        return
-                    } 
+                        return;
+                    }
                     if planet_id != planet_id_resp {
-                        log::error!("Explorer {:?} returned incohernet planet ID {:?} when sending {:?}",
+                        log::error!(
+                            "Explorer {:?} returned incohernet planet ID {:?} when sending {:?}",
                             self.id as ID,
                             planet_id,
                             planet_id_resp
                         );
-                        return
+                        return;
                     }
 
-                    log::info!("Explorer {:?} moved to planet {:?}",
+                    log::info!(
+                        "Explorer {:?} moved to planet {:?}",
                         self.id as ID,
                         planet_id
                     );
-                },
-                _ => log::error!("Invalid response from {:?}. Expected {:?}, got {:?}",
+                }
+                _ => log::error!(
+                    "Invalid response from {:?}. Expected {:?}, got {:?}",
                     self.channel.reciever_ident,
                     ExplorerToOrchestratorKind::MovedToPlanetResult,
                     val
-                )
+                ),
             },
             Err(_) => {}
         }
     }
-
 }
 
-struct LoggedChannel<SendT,RecvT> {
+struct LoggedChannel<SendT, RecvT> {
     reciever: crossbeam_channel::Receiver<RecvT>,
     sender: crossbeam_channel::Sender<SendT>,
     reciever_ident: String,
@@ -489,12 +499,12 @@ struct LoggedChannel<SendT,RecvT> {
 enum ChannelError<T> {
     SendError(crossbeam_channel::SendError<T>),
     RecvError(crossbeam_channel::RecvError),
-    InvalidResponseError
+    InvalidResponseError,
 }
 
-impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT,RecvT> {
-    fn send(&self, val: SendT) -> Result<(),crossbeam_channel::SendError<SendT>> {
-        let val_debug = std::format!("{:?}",val);
+impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT, RecvT> {
+    fn send(&self, val: SendT) -> Result<(), crossbeam_channel::SendError<SendT>> {
+        let val_debug = std::format!("{:?}", val);
         let result = self.sender.send(val);
 
         if result.is_ok() {
@@ -506,7 +516,7 @@ impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT,RecvT> 
         return result;
     }
 
-    fn recv(&self) -> Result<RecvT,crossbeam_channel::RecvError> {
+    fn recv(&self) -> Result<RecvT, crossbeam_channel::RecvError> {
         let result = self.reciever.recv();
         match result {
             Ok(val) => {
@@ -514,36 +524,43 @@ impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT,RecvT> 
                 Ok(val)
             }
             Err(err) => {
-                log::error!("{} error while waiting on response from {}", err, self.reciever_ident);
+                log::error!(
+                    "{} error while waiting on response from {}",
+                    err,
+                    self.reciever_ident
+                );
                 Err(err)
             }
         }
     }
 
-    fn send_and_check_ack<T: PartialEq + std::fmt::Debug>(&self, val: SendT, ack_to_ckeck: T) -> Result<(),ChannelError<SendT>>
-    where 
-        RecvT: Into<T>
+    fn send_and_check_ack<T: PartialEq + std::fmt::Debug>(
+        &self,
+        val: SendT,
+        ack_to_ckeck: T,
+    ) -> Result<(), ChannelError<SendT>>
+    where
+        RecvT: Into<T>,
     {
         let send_result = self.send(val).map(|val| {});
         match send_result {
-            Ok(()) => {
-                match self.recv() {
-                    Ok(res) => {
-                        let res_debug = std::format!("{:?}",res);
-                        if ack_to_ckeck != res.into() {
-                            log::error!("Invalid response from {:?}. Expected {:?}, got {}",
-                                self.reciever_ident,
-                                ack_to_ckeck,
-                                res_debug
-                            )
-                        }
-                        
-                        Ok(())
-                    },
-                    Err(err) => { Err(ChannelError::RecvError(err)) } 
+            Ok(()) => match self.recv() {
+                Ok(res) => {
+                    let res_debug = std::format!("{:?}", res);
+                    if ack_to_ckeck != res.into() {
+                        log::error!(
+                            "Invalid response from {:?}. Expected {:?}, got {}",
+                            self.reciever_ident,
+                            ack_to_ckeck,
+                            res_debug
+                        )
+                    }
+
+                    Ok(())
                 }
+                Err(err) => Err(ChannelError::RecvError(err)),
             },
-            Err (err) => { Err(ChannelError::SendError(err)) }
+            Err(err) => Err(ChannelError::SendError(err)),
         }
     }
 }
