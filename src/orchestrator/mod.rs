@@ -3,7 +3,7 @@ use crate::orchestrator::Command::{Exit, StartPlanet};
 use crate::orchestrator::ai::Ai;
 use crate::orchestrator::shell::Shell;
 use common_game::components::asteroid::Asteroid;
-use common_game::components::planet::DummyPlanetState;
+use common_game::components::planet::{self, DummyPlanetState};
 use common_game::components::sunray::Sunray;
 use common_game::protocols::orchestrator_planet::PlanetToOrchestrator::AsteroidAck;
 use common_game::{
@@ -47,6 +47,7 @@ pub struct PlanetHandle {
     tx_explorer: crossbeam_channel::Sender<planet_explorer::ExplorerToPlanet>,
 }
 
+#[derive(Clone,Copy)]
 pub enum ExplorerID {
     First = 0,
     Second = 1,
@@ -434,6 +435,47 @@ impl ExplorerHandle {
             ExplorerToOrchestratorKind::KillExplorerResult
         ) {
             log::info!("Explorer {} killed",self.id)
+        }
+    }
+
+    fn move_to_planet(&self, sender: Option<crossbeam_channel::Sender<planet_explorer::ExplorerToPlanet>>, planet_id: ID) {
+        let result = self.channel.send(OrchestratorToExplorer::MoveToPlanet { sender_to_new_planet: sender, planet_id }); 
+        if result.is_err() {
+            return 
+        }
+
+        match self.channel.recv() {
+            Ok(val) => match val {
+                ExplorerToOrchestrator::MovedToPlanetResult {explorer_id, planet_id: planet_id_resp } => {
+                    if explorer_id != self.id as ID {
+                        log::error!("Explorer {:?} returned incohernet ID {:?} when sending {:?}",
+                            self.id as ID,
+                            explorer_id,
+                            planet_id_resp
+                        );
+                        return
+                    } 
+                    if planet_id != planet_id_resp {
+                        log::error!("Explorer {:?} returned incohernet planet ID {:?} when sending {:?}",
+                            self.id as ID,
+                            planet_id,
+                            planet_id_resp
+                        );
+                        return
+                    }
+
+                    log::info!("Explorer {:?} moved to planet {:?}",
+                        self.id as ID,
+                        planet_id
+                    );
+                },
+                _ => log::error!("Invalid response from {:?}. Expected {:?}, got {:?}",
+                    self.channel.reciever_ident,
+                    ExplorerToOrchestratorKind::MovedToPlanetResult,
+                    val
+                )
+            },
+            Err(_) => {}
         }
     }
 
