@@ -1,4 +1,7 @@
-use crate::{galaxy_generator::Galaxy, orchestrator::Orchestrator};
+use crate::{
+    galaxy_generator::Galaxy,
+    orchestrator::{ExplorerVendor, Explorers, Orchestrator},
+};
 use clap::{Parser, Subcommand, ValueEnum};
 use std::{
     collections::VecDeque,
@@ -24,6 +27,8 @@ pub enum ClapCommand {
     },
     Run {
         galaxy_name: String,
+        explorer1: ExplorerVendor,
+        explorer2: Option<ExplorerVendor>,
     },
 }
 
@@ -51,13 +56,25 @@ impl ClapCommand {
                 write(format!("./galaxies/{}.json", galaxy_name), json)?;
                 Ok(CommandResult::Generated)
             }
-            ClapCommand::Run { galaxy_name } => {
+            ClapCommand::Run {
+                galaxy_name,
+                explorer1,
+                explorer2,
+            } => {
                 let galaxy_str = read_to_string(format!("./galaxies/{}.json", galaxy_name))?;
                 let galaxy: Galaxy = serde_json::from_str(&galaxy_str)?;
+                let explorers = {
+                    if let Some(explorer2) = explorer2 {
+                        Explorers::Two(explorer1, explorer2)
+                    } else {
+                        Explorers::One(explorer1)
+                    }
+                };
                 Ok(CommandResult::Running(Orchestrator::new(
                     galaxy,
                     Arc::new(Mutex::new(VecDeque::new())),
                     Arc::new(Mutex::new(VecDeque::new())),
+                    explorers,
                 )))
             }
         }

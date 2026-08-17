@@ -3,20 +3,20 @@ use crate::orchestrator::Command::{Exit, StartPlanet};
 use crate::orchestrator::ai::Ai;
 use crate::orchestrator::shell::Shell;
 use common_game::components::asteroid::Asteroid;
-use common_game::components::planet::{self, DummyPlanetState};
+use common_game::components::planet::DummyPlanetState;
 use common_game::components::sunray::Sunray;
 use common_game::protocols::orchestrator_planet::PlanetToOrchestrator::AsteroidAck;
 use common_game::{
     protocols::{orchestrator_explorer, orchestrator_planet, planet_explorer},
     utils::ID,
 };
+use explorer_common::Bag;
 use orchestrator_explorer::{
     ExplorerToOrchestrator, ExplorerToOrchestratorKind, OrchestratorToExplorer,
 };
 use orchestrator_planet::{OrchestratorToPlanet, PlanetToOrchestrator};
 use std::collections::VecDeque;
 use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering::Relaxed;
 use std::thread::sleep;
 use std::time::Duration;
 use std::{
@@ -30,6 +30,7 @@ pub struct Orchestrator {
     galaxy: Galaxy,
     ai_queue: Arc<Mutex<VecDeque<Command>>>,
     user_queue: Arc<Mutex<VecDeque<Command>>>,
+    explorer_vendors: Explorers,
 }
 pub struct AiHandle {
     id: ID,
@@ -51,6 +52,17 @@ pub enum ExplorerID {
     Second = 1,
 }
 
+pub enum Explorers {
+    One(ExplorerVendor),
+    Two(ExplorerVendor, ExplorerVendor),
+}
+#[derive(clap::ValueEnum, Clone)]
+pub enum ExplorerVendor {
+    Lorenzo,
+    Alessio,
+    Luca,
+}
+
 impl std::fmt::Display for ExplorerID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
@@ -59,8 +71,6 @@ impl std::fmt::Display for ExplorerID {
         })
     }
 }
-
-type Bag = (); //TODO
 
 pub struct ExplorerHandle {
     id: ExplorerID,
@@ -110,11 +120,13 @@ impl Orchestrator {
         galaxy: Galaxy,
         ai_queue: Arc<Mutex<VecDeque<Command>>>,
         user_queue: Arc<Mutex<VecDeque<Command>>>,
+        explorer_vendors: Explorers,
     ) -> Self {
         Orchestrator {
             galaxy,
             ai_queue,
             user_queue,
+            explorer_vendors,
         }
     }
     pub fn run(&mut self) {
