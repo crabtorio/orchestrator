@@ -1,5 +1,5 @@
 use crate::galaxy_generator::{Galaxy, PlanetContainer};
-use crate::orchestrator::Command::{Exit, StartPlanet};
+use crate::orchestrator::Command::*;
 use crate::orchestrator::ai::Ai;
 use crate::orchestrator::shell::Shell;
 use common_game::components::asteroid::Asteroid;
@@ -16,7 +16,8 @@ use orchestrator_explorer::{
 };
 use orchestrator_planet::{OrchestratorToPlanet, PlanetToOrchestrator};
 use std::collections::VecDeque;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering::{Relaxed, Release};
+use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::thread::sleep;
 use std::time::Duration;
 use std::{
@@ -30,13 +31,23 @@ pub struct Orchestrator {
     galaxy: Galaxy,
     ai_queue: Arc<Mutex<VecDeque<Command>>>,
     user_queue: Arc<Mutex<VecDeque<Command>>>,
-    explorer_vendors: Explorers,
+    explorers: Explorers,
 }
 pub struct AiHandle {
     id: ID,
     handle: JoinHandle<()>,
     run_flag: Arc<AtomicBool>, // Ais will check periodically this flag and return if false. Only way to stop a thread from the outside
                                // We could potentially add corssbeam channels to communicate with the AI if we ever wanted
+}
+impl AiHandle {
+    fn new(ai: Box<dyn Ai>, queue: Arc<Mutex<VecDeque<Command>>>) -> Self {
+        static NEXT_ID: AtomicU32 = AtomicU32::new(0);
+        Self {
+            id: NEXT_ID.load(Relaxed),
+            handle: { thread::spawn(move || ai.run(queue)) },
+            run_flag: Arc::new(AtomicBool::new(true)),
+        }
+    }
 }
 pub struct PlanetHandle {
     id: ID,
@@ -97,9 +108,9 @@ pub enum Command {
     BagContentRquest(ExplorerID),
 
     // Planet
-    StartAllPlanets,
-    StopAllPlanets,
-    KillAllPlanets,
+    StartPlanets,
+    StopPlanets,
+    KillPlanets,
     StartPlanet(ID),
     StopPlanet(ID),
     KillPlanet(ID),
@@ -108,7 +119,7 @@ pub enum Command {
     InternalStateRequest(ID),
 
     // Orchestrator AI
-    SpawnShell,
+    //SpawnShell,
     SpawnAi(Box<dyn Ai>),
     KillAi(ID),     // ai_handles ID
     ShowRunningAis, // Also shows AI IDs
@@ -120,13 +131,13 @@ impl Orchestrator {
         galaxy: Galaxy,
         ai_queue: Arc<Mutex<VecDeque<Command>>>,
         user_queue: Arc<Mutex<VecDeque<Command>>>,
-        explorer_vendors: Explorers,
+        explorers: Explorers,
     ) -> Self {
         Orchestrator {
             galaxy,
             ai_queue,
             user_queue,
-            explorer_vendors,
+            explorers,
         }
     }
     pub fn run(&mut self) {
@@ -138,10 +149,11 @@ impl Orchestrator {
                 (id, PlanetHandle::spawn(planet.clone()))
             })
             .collect();
-        let ai_handles: HashMap<ID, AiHandle>;
+        let mut ai_handles: HashMap<ID, AiHandle> = HashMap::new();
 
         let shell = Shell::new(self.user_queue.clone());
         let shell_handle = thread::spawn(move || shell.run());
+        let mut explorer_handles: (Option<ExplorerHandle>, Option<ExplorerHandle>) = (None, None);
 
         loop {
             sleep(Duration::from_millis(50));
@@ -162,7 +174,37 @@ impl Orchestrator {
             };
             match next_command {
                 Exit => break,
+                StartPlanets => {
+                    for (_, handle) in &planet_handles {
+                        handle.start_planet();
+                    }
+                }
+                StopPlanets => {
+                    for (_, handle) in &planet_handles {
+                        handle.stop_planet();
+                    }
+                }
+                KillPlanets => {
+                    for (_, handle) in &planet_handles {
+                        handle.kill_planet();
+                    }
+                }
                 StartPlanet(id) => planet_handles[&id].start_planet(),
+                StopPlanet(id) => planet_handles[&id].stop_planet(),
+                KillPlanet(id) => planet_handles[&id].kill_planet(),
+                SendSunray(id) => planet_handles[&id].send_sunray(),
+                SendAsteroid(id) => planet_handles[&id].send_asteroid(),
+                SpawnAi(ai) => {
+                    let new_ai = AiHandle::new(ai, self.ai_queue.clone());
+                    ai_handles.insert(new_ai.id, new_ai);
+                }
+                KillAi(id) => ai_handles[&id].run_flag.store(false, Release), // Not sure about the right ordering, check later
+                ShowRunningAis => {
+                    println!("Running AIs");
+                    for (_, handle) in &ai_handles {
+                        println!("id: {}", handle.id);
+                    }
+                }
                 _ => (), // To fill
             }
         }

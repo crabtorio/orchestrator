@@ -6,7 +6,7 @@ use std::{
 
 use common_game::utils::ID;
 
-use crate::orchestrator::Command::{self, Exit, StartAllPlanets, StartPlanet};
+use crate::orchestrator::Command::{self, Exit, StartPlanet, StartPlanets};
 
 pub struct Shell {
     user_queue: Arc<Mutex<VecDeque<Command>>>,
@@ -46,7 +46,7 @@ fn parse_command(mut input: String) -> Result<Command, String> {
     let arguments = &parts[1..];
 
     match command {
-        "startallplanets" => Ok(StartAllPlanets),
+        "startallplanets" => Ok(StartPlanets),
         "exit" => Ok(Exit),
         "startplanet" => {
             print!("dsaas: {:?}", arguments[0].parse::<ID>());
