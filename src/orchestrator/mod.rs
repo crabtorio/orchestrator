@@ -1,6 +1,7 @@
 use crate::galaxy_generator::{Galaxy, PlanetContainer};
 use crate::orchestrator::Command::*;
-use crate::orchestrator::ai::{Ai, AiType};
+use crate::orchestrator::ai::AiType::RichardRandom as RichardRandomType;
+use crate::orchestrator::ai::{Ai, AiType, RichardRandom};
 use crate::orchestrator::shell::Shell;
 use common_game::components::asteroid::Asteroid;
 use common_game::components::planet::DummyPlanetState;
@@ -205,7 +206,9 @@ impl Orchestrator {
                 SendAsteroid(id) => planet_handles[&id].send_asteroid(),
                 SpawnAi(ai) => {
                     let new_ai = AiHandle::new(
-                        ai,
+                        match ai {
+                            RichardRandomType => Box::new(RichardRandom),
+                        },
                         self.ai_queue.clone(),
                         0,
                         (self.galaxy.planets.len() - 1) as ID,
