@@ -69,10 +69,10 @@ pub enum ExplorerID {
 }
 
 pub enum Explorers {
-    One(ExplorerHandle),
-    Two(ExplorerHandle, ExplorerHandle),
+    One(ExplorerVendor),
+    Two(ExplorerVendor, ExplorerVendor),
 }
-#[derive(clap::ValueEnum, Clone)]
+#[derive(clap::ValueEnum, Clone, Copy)]
 pub enum ExplorerVendor {
     Lorenzo,
     Alessio,
@@ -163,7 +163,15 @@ impl Orchestrator {
 
         let shell = Shell::new(self.user_queue.clone());
         let shell_handle = thread::spawn(move || shell.run());
-        let mut explorer_handles: (Option<ExplorerHandle>, Option<ExplorerHandle>) = (None, None);
+        let mut explorer_handles = match &self.explorers {
+            Explorers::One(explorer_vendor) => vec![
+                ExplorerHandle::spawn(ExplorerID::First,*explorer_vendor),
+            ],
+            Explorers::Two(explorer_vendor, explorer_vendor1) => vec![
+                ExplorerHandle::spawn(ExplorerID::First,*explorer_vendor),
+                ExplorerHandle::spawn(ExplorerID::Second,*explorer_vendor)
+            ],
+        };
 
         loop {
             sleep(Duration::from_millis(50));
@@ -243,7 +251,7 @@ impl Orchestrator {
                 CombineResourceRequest(explorer_id, complex_resource_type) => todo!(),
             }
 
-            self.handle_request();
+            self.handle_request(&explorer_handles);
         }
 
         //This is for debug, planets should be started, stopped and killed by the user. The only thing that stays below is the thread joining
@@ -263,11 +271,8 @@ impl Orchestrator {
     }
 
     ///Poll clients and handle first found request.
-    fn handle_request(&mut self) {
-        for explorer in match &self.explorers {
-            Explorers::One(explorer) => vec![explorer],
-            Explorers::Two(explorer1, explorer2) => vec![explorer1, explorer2],
-        } {
+    fn handle_request(&mut self, explorers : &Vec<ExplorerHandle>) {
+        for explorer in explorers {
             match explorer.channel.poll() {
                 Err(()) => {
                     todo!("Kill explorer");
@@ -598,6 +603,11 @@ impl PlanetHandle {
 }
 
 impl ExplorerHandle {
+
+    fn spawn(id: ExplorerID, vendor: ExplorerVendor) -> Self {
+        todo!()
+    }
+
     fn start_explorer_ai(&self) {
         if let Ok(_) = self.channel.send_and_check_ack(
             OrchestratorToExplorer::StartExplorerAI,

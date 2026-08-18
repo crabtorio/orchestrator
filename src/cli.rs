@@ -65,9 +65,9 @@ impl ClapCommand {
                 let galaxy: Galaxy = serde_json::from_str(&galaxy_str)?;
                 let explorers = {
                     if let Some(explorer2) = explorer2 {
-                        Explorers::Two(todo!(), todo!())
+                        Explorers::Two(explorer1, explorer2)
                     } else {
-                        Explorers::One(todo!())
+                        Explorers::One(explorer1)
                     }
                 };
                 Ok(CommandResult::Running(Orchestrator::new(
