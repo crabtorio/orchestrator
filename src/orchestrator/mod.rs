@@ -40,11 +40,11 @@ pub struct AiHandle {
                                // We could potentially add corssbeam channels to communicate with the AI if we ever wanted
 }
 impl AiHandle {
-    fn new(ai: Box<dyn Ai>, queue: Arc<Mutex<VecDeque<Command>>>) -> Self {
+    fn new(ai: Box<dyn Ai>, queue: Arc<Mutex<VecDeque<Command>>>, first: ID, last: ID) -> Self {
         static NEXT_ID: AtomicU32 = AtomicU32::new(0);
         Self {
             id: NEXT_ID.load(Relaxed),
-            handle: { thread::spawn(move || ai.run(queue)) },
+            handle: { thread::spawn(move || ai.run(queue, first, last)) },
             run_flag: Arc::new(AtomicBool::new(true)),
         }
     }
@@ -195,7 +195,7 @@ impl Orchestrator {
                 SendSunray(id) => planet_handles[&id].send_sunray(),
                 SendAsteroid(id) => planet_handles[&id].send_asteroid(),
                 SpawnAi(ai) => {
-                    let new_ai = AiHandle::new(ai, self.ai_queue.clone());
+                    let new_ai = AiHandle::new(ai, self.ai_queue.clone(), 0, (self.galaxy.planets.len() -1) as ID );
                     ai_handles.insert(new_ai.id, new_ai);
                 }
                 KillAi(id) => ai_handles[&id].run_flag.store(false, Release), // Not sure about the right ordering, check later
