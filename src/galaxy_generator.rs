@@ -59,7 +59,7 @@ pub struct Galaxy {
 pub struct PlanetContainer {
     handling_id: ID,
     planet: Planet,
-    adj: Vec<Arc<Mutex<PlanetContainer>>>,
+    pub adj: Vec<Arc<Mutex<PlanetContainer>>>,
     vendor: PlanetVendor, //Stored vendor because otherwise unknown
     pub tx_planet: crossbeam_channel::Sender<orchestrator_planet::OrchestratorToPlanet>,
     pub rx_planet: crossbeam_channel::Receiver<orchestrator_planet::PlanetToOrchestrator>,
