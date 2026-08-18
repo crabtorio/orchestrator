@@ -169,7 +169,7 @@ impl Orchestrator {
             ],
             Explorers::Two(explorer_vendor, explorer_vendor1) => vec![
                 ExplorerHandle::spawn(ExplorerID::First,*explorer_vendor),
-                ExplorerHandle::spawn(ExplorerID::Second,*explorer_vendor)
+                ExplorerHandle::spawn(ExplorerID::Second,*explorer_vendor1)
             ],
         };
 
