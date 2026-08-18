@@ -6,24 +6,26 @@ use std::{
     thread,
     time,
 };
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering::Relaxed;
 use rand::{Rng};
 use rand_distr::StandardNormal;
 
 pub trait Ai: Send {
-    fn run(&self, ai_queue: Arc<Mutex<VecDeque<Command>>>, start: ID, end: ID);
+    fn run(&self, ai_queue: Arc<Mutex<VecDeque<Command>>>, runflag: Arc<AtomicBool>, start: ID, end: ID);
 }
 
 pub struct RichardRandom;
 
 impl Ai for RichardRandom {
-    fn run(&self, ai_queue: Arc<Mutex<VecDeque<Command>>>, start: ID, end: ID) {
+    fn run(&self, ai_queue: Arc<Mutex<VecDeque<Command>>>, runflag: Arc<AtomicBool>, start: ID, end: ID) {
 
         //Parameter-constants, allow control for how the chances chance
         const NOTHING_WEIGHT: i32 = 10;
         const SUN_WEIGHT: i32 = 5;
         const ASTEROID_WEIGHT: i32 = 1;
 
-        while true {
+        while runflag.load(Relaxed) {
             let target: ID = rand::random_range(start..end);
             let action: i32 = rand::random_range(1..(NOTHING_WEIGHT + SUN_WEIGHT + ASTEROID_WEIGHT));
             

@@ -43,10 +43,12 @@ pub struct AiHandle {
 impl AiHandle {
     fn new(ai: Box<dyn Ai>, queue: Arc<Mutex<VecDeque<Command>>>, first: ID, last: ID) -> Self {
         static NEXT_ID: AtomicU32 = AtomicU32::new(0);
+        let run_flag = Arc::new(AtomicBool::new(true));
+        let closure_flag = run_flag.clone();
         Self {
             id: NEXT_ID.load(Relaxed),
-            handle: { thread::spawn(move || ai.run(queue, first, last)) },
-            run_flag: Arc::new(AtomicBool::new(true)),
+            handle: { thread::spawn(move || ai.run(queue, closure_flag, first, last)) },
+            run_flag: run_flag,
         }
     }
 }

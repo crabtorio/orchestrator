@@ -75,7 +75,7 @@ impl PlanetContainer {
     }
     //new is the WIP creation, since the only values accessed is handler_id and adj, either being discardable or initialized at empty
     fn new(id: ID) -> Self {
-        let vendor: PlanetVendor = rand::rng().sample(StandardNormal); //TODO change to an even-distributed sampling, since this is a Normal Distribution and y'all passed Probability 1  
+        let vendor: PlanetVendor = rand::rng().sample(StandardNormal);
         let (tp1, rp1) = crossbeam_channel::unbounded();
         let (tp2, rp2) = crossbeam_channel::unbounded();
         let (te, re) = crossbeam_channel::unbounded();
