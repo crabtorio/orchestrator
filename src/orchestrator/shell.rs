@@ -46,7 +46,7 @@ fn parse_command(mut input: String) -> Result<Command, String> {
     let arguments = &parts[1..];
 
     match command {
-        "startallplanets" => Ok(StartPlanets),
+        "startplanets" => Ok(StartPlanets),
         "exit" => Ok(Exit),
         "startplanet" => {
             print!("dsaas: {:?}", arguments[0].parse::<ID>());
@@ -66,10 +66,10 @@ mod test {
 
     #[test]
     fn test_parse_command() {
-        let test1 = parse_command("startallplanets".to_string());
+        let test1 = parse_command("startplanets".to_string());
         let test2 = parse_command("StartPlanet 102".to_string());
 
-        assert!(matches!(test1, Ok(Command::StartAllPlanets)));
+        assert!(matches!(test1, Ok(Command::StartPlanets)));
         assert!(matches!(test2, Ok(Command::StartPlanet(102))));
     }
 }
