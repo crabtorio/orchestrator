@@ -4,6 +4,7 @@ use crate::orchestrator::ai::Ai;
 use crate::orchestrator::shell::Shell;
 use common_game::components::asteroid::Asteroid;
 use common_game::components::planet::DummyPlanetState;
+use common_game::components::resource::{BasicResourceType, ComplexResourceType};
 use common_game::components::sunray::Sunray;
 use common_game::protocols::orchestrator_planet::PlanetToOrchestrator::AsteroidAck;
 use common_game::{
@@ -101,10 +102,10 @@ pub enum Command {
     MoveExplorer { planet_id: ID, explorer: ExplorerID },
     // Manual mode explorer
     CurrentPlanetRequest(ExplorerID),
-    SupportedResourceReques(ExplorerID),
+    SupportedResourceRequest(ExplorerID),
     SupportedCombinationRequest(ExplorerID),
-    GenerateResourceRequest(ExplorerID),
-    CombineResourceRequest(ExplorerID),
+    GenerateResourceRequest(ExplorerID, BasicResourceType),
+    CombineResourceRequest(ExplorerID, ComplexResourceType),
     BagContentRquest(ExplorerID),
 
     // Planet
@@ -195,7 +196,12 @@ impl Orchestrator {
                 SendSunray(id) => planet_handles[&id].send_sunray(),
                 SendAsteroid(id) => planet_handles[&id].send_asteroid(),
                 SpawnAi(ai) => {
-                    let new_ai = AiHandle::new(ai, self.ai_queue.clone(), 0, (self.galaxy.planets.len() -1) as ID );
+                    let new_ai = AiHandle::new(
+                        ai,
+                        self.ai_queue.clone(),
+                        0,
+                        (self.galaxy.planets.len() - 1) as ID,
+                    );
                     ai_handles.insert(new_ai.id, new_ai);
                 }
                 KillAi(id) => ai_handles[&id].run_flag.store(false, Release), // Not sure about the right ordering, check later
