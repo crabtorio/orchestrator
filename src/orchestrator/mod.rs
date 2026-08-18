@@ -166,12 +166,14 @@ impl Orchestrator {
         let shell_handle = thread::spawn(move || shell.run());
         let planet_id = ID::MAX; //TMP
         let explorer_handles = match &self.explorers {
-            Explorers::One(explorer_vendor) => vec![
-                ExplorerHandle::spawn(ExplorerID::First,*explorer_vendor,planet_id),
-            ],
+            Explorers::One(explorer_vendor) => vec![ExplorerHandle::spawn(
+                ExplorerID::First,
+                *explorer_vendor,
+                planet_id,
+            )],
             Explorers::Two(explorer_vendor, explorer_vendor1) => vec![
-                ExplorerHandle::spawn(ExplorerID::First,*explorer_vendor,planet_id),
-                ExplorerHandle::spawn(ExplorerID::Second,*explorer_vendor1,planet_id)
+                ExplorerHandle::spawn(ExplorerID::First, *explorer_vendor, planet_id),
+                ExplorerHandle::spawn(ExplorerID::Second, *explorer_vendor1, planet_id),
             ],
         };
 
@@ -273,7 +275,7 @@ impl Orchestrator {
     }
 
     ///Poll clients and handle first found request.
-    fn handle_request(&mut self, explorers : &Vec<ExplorerHandle>) {
+    fn handle_request(&mut self, explorers: &Vec<ExplorerHandle>) {
         for explorer in explorers {
             match explorer.channel.poll() {
                 Err(()) => {
@@ -605,26 +607,25 @@ impl PlanetHandle {
 }
 
 impl ExplorerHandle {
-
     fn spawn(id: ExplorerID, vendor: ExplorerVendor, current_planet: ID) -> Self {
-        let (ex_sender,ex_reciever) = crossbeam_channel::unbounded();
-        let (ox_sender,ox_reciever) = crossbeam_channel::unbounded();
-        
+        let (ex_sender, ex_reciever) = crossbeam_channel::unbounded();
+        let (ox_sender, ox_reciever) = crossbeam_channel::unbounded();
+
         let handle = thread::spawn(move || {
             ex_reciever;
             ox_sender;
             //TODO this whole thing
         });
 
-        ExplorerHandle { 
+        ExplorerHandle {
             id,
             handle,
             current_planet,
-            channel: LoggedChannel::<OrchestratorToExplorer,ExplorerToOrchestrator<Bag>> { 
-                sender: ex_sender, 
-                reciever: ox_reciever, 
-                reciever_ident: "()".to_string(), 
-            }
+            channel: LoggedChannel::<OrchestratorToExplorer, ExplorerToOrchestrator<Bag>> {
+                sender: ex_sender,
+                reciever: ox_reciever,
+                reciever_ident: "()".to_string(),
+            },
         }
     }
 
