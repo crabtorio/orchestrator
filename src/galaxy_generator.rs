@@ -67,14 +67,15 @@ pub struct PlanetContainer {
 }
 
 impl PlanetContainer {
-    pub fn run(&mut self) {
-        self.planet.run();
+    pub fn run(&mut self) -> Result<(), String> {
+        self.planet.run()
     }
     pub fn id(&self) -> ID {
         self.handling_id
     }
     //new is the WIP creation, since the only values accessed is handler_id and adj, either being discardable or initialized at empty
     fn new(id: ID) -> Self {
+        log::trace!("Galaxy Generator: Creating new PlanetContainer");
         let vendor: PlanetVendor = rand::rng().sample(StandardNormal);
         let (tp1, rp1) = crossbeam_channel::unbounded();
         let (tp2, rp2) = crossbeam_channel::unbounded();
@@ -181,10 +182,11 @@ impl Galaxy {
             }
 
             fn get_distance(&self, other: &Self) -> f64 {
-                ((self.x - other.x).powi(2)
+                (
+                    (self.x - other.x).powi(2)
                     + (self.y - other.y).powi(2)
-                    + (self.z - other.z).powi(2))
-                .sqrt()
+                    + (self.z - other.z).powi(2)
+                ).sqrt()
             }
         }
         struct CoordContainer {
@@ -200,7 +202,6 @@ impl Galaxy {
                     c: Coords::new(),
                 }
             }
-
             fn get_dist(&self, other: &Self) -> f64 {
                 self.c.get_distance(&other.c)
             }
@@ -244,6 +245,8 @@ impl Galaxy {
                 containers[self.p2 as usize].adj.push(self.p1);
             }
         }
+        
+        log::info!("Galaxy Generator: Beginning Galaxy Generation From Random Distribution");
 
         let adj_size = match expected_percentage {
             //Simple piecewise linear interpolation
@@ -252,15 +255,19 @@ impl Galaxy {
             68.0..=95.0 => (expected_percentage - 68.0) / (95.0 - 68.0) + 1.0, //Second line between 1 and 2
             _ => (expected_percentage - 95.0) / (99.0 - 95.0) + 2.0, //Second line, from 2 and passes through 3 but with no upper bound
         };
-
+        
+        log::trace!("Galaxy Generator: Adjacency constant: {}", adj_size);
+        
         let mut hold_vec = Vec::new();
-
+        
         if planet_count == 0 {
             return Galaxy {
                 planets: HashMap::new(),
             };
         } //Early out for no-planet galaxy
-
+        
+        log::trace!("Galaxy Generator: Beginning Coord Distribution");
+        
         for i in 0..planet_count {
             hold_vec.push(CoordContainer::new(i as ID));
         }
@@ -273,6 +280,8 @@ impl Galaxy {
                 }
             }
         }
+        
+        log::trace!("Galaxy Generator: Beginning Primm & proper check");
 
         let mut in_set = HashSet::new();
         let mut out_set = HashSet::new();
@@ -330,6 +339,8 @@ impl Galaxy {
             late_queue.pop().unwrap().resolve(&mut hold_vec); //Resolves all the outstanding late bindings, using the nice method I made earlier
         }
 
+        log::trace!("Galaxy Generator: Converting to result HashMap");
+        
         let mut conversion_array = Vec::new();
         let mut ending_set = HashMap::new(); //Return to hashmap because the extra bits actually matter now
 
@@ -348,12 +359,16 @@ impl Galaxy {
         for i in 0..planet_count as usize {
             ending_set.insert(hold_vec[i].id, conversion_array[i].clone()); //Insert all the arcs in the ending set with respective ids
         }
+        
+        log::info!("Galaxy Generator: Galaxy generation conluded");
 
         Galaxy {
             planets: ending_set,
         }
     }
     pub fn drop_planet(&mut self, id: ID) {
+        log::debug!("Dropping Planet: {}", id);
+        
         let planet_arc = self.planets[&id].clone(); //First isolate planet to remove all references to it
         let planet = planet_arc.lock().unwrap();
         //Is some AI shutdown needed? Goes here
