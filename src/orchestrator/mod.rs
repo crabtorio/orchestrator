@@ -56,7 +56,7 @@ impl AiHandle {
 }
 pub struct PlanetHandle {
     id: ID,
-    handle: JoinHandle<()>,
+    handle: JoinHandle<Result<(), String>>,
     tx_planet: crossbeam_channel::Sender<orchestrator_planet::OrchestratorToPlanet>,
     rx_planet: crossbeam_channel::Receiver<orchestrator_planet::PlanetToOrchestrator>,
     tx_explorer: crossbeam_channel::Sender<planet_explorer::ExplorerToPlanet>,
@@ -600,7 +600,10 @@ impl PlanetHandle {
     }
     fn join_thread(self) {
         match self.handle.join() {
-            Ok(()) => (),
+            Ok(planet_result) => match planet_result {
+                Ok(()) => log::info!("Planet {} joined successfully", self.id),
+                Err(error) => log::error!("Error when joining planet {}: {}", self.id, error),
+            },
             Err(_) => log::error!("Could not join thread of planet {}", self.id),
         }
     }
