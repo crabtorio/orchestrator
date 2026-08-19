@@ -199,7 +199,9 @@ impl Orchestrator {
                             Ok(join_handle) => {
                                 join_handle.join();
                             }
-                            Err(_) => log::error!("Could not shut down explorer cleanly, continuing anyway"),
+                            Err(_) => log::error!(
+                                "Could not shut down explorer cleanly, continuing anyway"
+                            ),
                         }
                     }
                     continue;
@@ -765,6 +767,7 @@ impl ExplorerHandle {
     }
 }
 
+/// A wrapper around [`crossbeam_channel`] channels that provides automatic logging of message events
 struct LoggedChannel<SendT, RecvT> {
     reciever: crossbeam_channel::Receiver<RecvT>,
     sender: crossbeam_channel::Sender<SendT>,
@@ -777,6 +780,12 @@ enum ChannelError<T> {
 }
 
 impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT, RecvT> {
+    /// Send a message.
+    /// Returns a the message, or [`crossbeam_channel::RecvError`] if an error occurs.
+    /// ---
+    /// Logs the folliwing events:
+    /// - Send
+    /// - Send errors
     fn send(&self, val: SendT) -> Result<(), crossbeam_channel::SendError<SendT>> {
         let val_debug = std::format!("{:?}", val);
         let result = self.sender.send(val);
@@ -790,6 +799,14 @@ impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT, RecvT>
         return result;
     }
 
+    /// Await a message.
+    /// Returns a the message, or [`crossbeam_channel::RecvError`] if an error occurs.
+    /// ---
+    /// Logs the folliwing events:
+    /// - Recv
+    /// - Recv errors
+    /// ---
+    /// Respone handling rests entirely on the caller
     fn recv(&self) -> Result<RecvT, crossbeam_channel::RecvError> {
         let result = self.reciever.recv();
         match result {
@@ -808,6 +825,17 @@ impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT, RecvT>
         }
     }
 
+    /// Send a message, then await and check the validity of the response.
+    /// Returns a [`ChannelError`] when an error occurs internally.
+    /// ---
+    /// Logs the folliwing events:
+    //  - Send
+    /// - Send errors
+    /// - Recv
+    /// - Recv errors
+    /// - Invalid response
+    /// ---
+    /// Useful for simple messages.
     fn send_and_check_ack<T: PartialEq + std::fmt::Debug>(
         &self,
         val: SendT,
@@ -816,7 +844,7 @@ impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT, RecvT>
     where
         RecvT: Into<T>,
     {
-        let send_result = self.send(val).map(|val| {});
+        let send_result = self.send(val);
         match send_result {
             Ok(()) => match self.recv() {
                 Ok(res) => {
@@ -827,10 +855,11 @@ impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT, RecvT>
                             self.reciever_ident,
                             ack_to_ckeck,
                             res_debug
-                        )
+                        );
+                        Err(ChannelError::InvalidResponseError)
+                    } else {
+                        Ok(())
                     }
-
-                    Ok(())
                 }
                 Err(err) => Err(ChannelError::RecvError(err)),
             },
@@ -838,6 +867,16 @@ impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT, RecvT>
         }
     }
 
+    /// Poll the channel for incoming messages (non-blocking).
+    /// Optionally returns the message (if any found), or `()` if the client disconnects.
+    /// ---
+    /// Logs the folliwing events:
+    /// - Poll start
+    /// - No response
+    /// - Recv
+    /// - Disconnect error
+    /// ---
+    /// Respone handling rests entirely on the caller
     fn poll(&self) -> Result<Option<RecvT>, ()> {
         log::trace!("Polling {:?}...", self.reciever_ident);
         match self.reciever.try_recv() {
