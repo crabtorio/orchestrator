@@ -53,13 +53,13 @@ use std::sync::{Arc, Mutex};
 
 pub struct Galaxy {
     pub planets: HashMap<ID, Arc<Mutex<PlanetContainer>>>, //Shifted to a hashmap to ease removal down the line, otherwise acts as a vec for what we need. ID entry is for number-driven access like rands
-                                                       //Other galaxy-wide info can go here
+                                                           //Other galaxy-wide info can go here
 }
 
 pub struct PlanetContainer {
     handling_id: ID,
     planet: Planet,
-    adj: Vec<Arc<Mutex<PlanetContainer>>>,
+    pub adj: Vec<Arc<Mutex<PlanetContainer>>>,
     vendor: PlanetVendor, //Stored vendor because otherwise unknown
     pub tx_planet: crossbeam_channel::Sender<orchestrator_planet::OrchestratorToPlanet>,
     pub rx_planet: crossbeam_channel::Receiver<orchestrator_planet::PlanetToOrchestrator>,
@@ -237,7 +237,7 @@ impl Galaxy {
 
         impl LateBinding {
             fn new(p1: ID, p2: ID) -> Self {
-                LateBinding { p1, p2}
+                LateBinding { p1, p2 }
             }
 
             fn resolve(self, containers: &mut Vec<CoordContainer>) {
@@ -275,7 +275,8 @@ impl Galaxy {
         for i in 0..planet_count as usize {
             for ii in 0..planet_count as usize {
                 let dist = hold_vec[i].get_dist(&hold_vec[ii]);
-                if i != ii && dist <= adj_size { //Makes sure the planet is not adjacent to self
+                if i != ii && dist <= adj_size {
+                    //Makes sure the planet is not adjacent to self
                     hold_vec[i].adj.push(ii as ID); //Simple adjacency, the following algorithm will guarantee connectedness
                 }
             }
@@ -288,13 +289,15 @@ impl Galaxy {
         let mut lag_set = HashSet::new();
 
         in_set.insert(0usize);
-        for i in 1..planet_count as usize { //preload non-cleared set
+        for i in 1..planet_count as usize {
+            //preload non-cleared set
             out_set.insert(i);
         }
 
         let mut late_queue = Vec::new(); //Deferring the de-orphaning to  the last step saves some calculations by reducing the size of the expansion necessary of a temp set
 
-        while !out_set.is_empty() { //By running the out_set to the ground we are sure there are no orphans left
+        while !out_set.is_empty() {
+            //By running the out_set to the ground we are sure there are no orphans left
 
             let mut has_updated = true;
 
@@ -305,13 +308,14 @@ impl Galaxy {
                     for ii in hold_vec[i.clone()].adj.iter() {
                         let pos = ii.clone() as usize;
                         in_set.insert(pos);
-                        has_updated =  out_set.remove(&pos) || has_updated; //The OR preserves true results
+                        has_updated = out_set.remove(&pos) || has_updated; //The OR preserves true results
                     }
                 }
                 lag_set = temp_set;
             }
 
-            if !out_set.is_empty() { //Double-check the last expansion hasn't depleted the out_sets
+            if !out_set.is_empty() {
+                //Double-check the last expansion hasn't depleted the out_sets
 
                 let min_dist = f64::INFINITY; //Since this is infinity all values should be smaller, effectively guaranteeing at least one true later
                 let mut a = None; //Options to make Rust not cry
@@ -327,7 +331,6 @@ impl Galaxy {
                         }
                     }
                 }
-
 
                 late_queue.push(LateBinding::new(a.unwrap() as ID, b.unwrap() as ID)); //I am once again reminding you that it would be very concerning for either to be None
                 out_set.remove(&c.unwrap());
@@ -350,8 +353,9 @@ impl Galaxy {
 
         for i in 0..planet_count as usize {
             let mut planet = conversion_array[i].lock().unwrap(); //get the mutexGuard of the element to prepare adjacencies to
-            for ii in hold_vec[i].adj.iter() { //Iterate over all the pre-prepared adjacencies
-                let pos = ii.clone() as usize;  //Indexing things is just so nice
+            for ii in hold_vec[i].adj.iter() {
+                //Iterate over all the pre-prepared adjacencies
+                let pos = ii.clone() as usize; //Indexing things is just so nice
                 planet.adj.push(conversion_array[pos].clone()); //Clone the arc to put in the ajd vector
             }
         } //Lock lost here?
@@ -372,7 +376,8 @@ impl Galaxy {
         let planet_arc = self.planets[&id].clone(); //First isolate planet to remove all references to it
         let planet = planet_arc.lock().unwrap();
         //Is some AI shutdown needed? Goes here
-        for i in planet.adj.iter() { //Isolate planet from all neighbors
+        for i in planet.adj.iter() {
+            //Isolate planet from all neighbors
             let mut other = i.lock().unwrap();
             for ii in 0..other.adj.len() {
                 if Arc::ptr_eq(&planet_arc, &other.adj[ii]) {
@@ -401,7 +406,11 @@ impl Serialize for Galaxy {
         for (planet_id, planet) in &self.planets {
             let lock = planet.lock().unwrap();
 
-            let adjacencies = lock.adj.iter().map(|adj_planet| {adj_planet.lock().unwrap().handling_id}).collect();
+            let adjacencies = lock
+                .adj
+                .iter()
+                .map(|adj_planet| adj_planet.lock().unwrap().handling_id)
+                .collect();
 
             seq.serialize_element(&PlanetEntry {
                 planet_id: *planet_id,
@@ -486,7 +495,6 @@ mod tests {
         fn recursive_search(current: ID, galaxy: &Galaxy, punch_card: &mut HashSet<ID>) {
             let unvisited = punch_card.insert(current); //See if already visited
             if unvisited {
-
                 let mut candidates = Vec::new();
 
                 {
@@ -495,9 +503,9 @@ mod tests {
                         let adj_lock = i.lock().unwrap(); //Look into neighbors
                         candidates.push(adj_lock.handling_id); //Put their IDs in the next list
                     }
-                }//Extra scope to make sure the locks die in the meantime
+                } //Extra scope to make sure the locks die in the meantime
 
-                for i in candidates{
+                for i in candidates {
                     recursive_search(i, galaxy, punch_card); //Ideally since the locks are already out-of-scope there should be no eternal spins
                 }
             }
@@ -521,8 +529,7 @@ mod tests {
             for ii in 0..planet.adj.len() {
                 let adj = planet.adj[ii].lock().unwrap();
                 assert_ne!(
-                    planet.handling_id,
-                    adj.handling_id,
+                    planet.handling_id, adj.handling_id,
                     "No planet should be self adjacent"
                 );
             }
@@ -539,13 +546,17 @@ mod tests {
         for i in galaxy.planets.values() {
             let planet = i.lock().unwrap();
             for ii in 0..planet.adj.len() {
-                for iii in ii+1..planet.adj.len() {
-                    if(Arc::ptr_eq(&planet.adj[ii], &planet.adj[iii])) {
+                for iii in ii + 1..planet.adj.len() {
+                    if (Arc::ptr_eq(&planet.adj[ii], &planet.adj[iii])) {
                         println!("{}", count);
                         println!("{}, {:?}", planet.handling_id, planet.vendor);
                         for d in 0..planet.adj.len() {
                             if d == ii || d == iii {
-                                println!("\t!{}: {}!", d, planet.adj[d].lock().unwrap().handling_id);
+                                println!(
+                                    "\t!{}: {}!",
+                                    d,
+                                    planet.adj[d].lock().unwrap().handling_id
+                                );
                             } else {
                                 println!("\t{}: {}", d, planet.adj[d].lock().unwrap().handling_id);
                             }
@@ -557,11 +568,14 @@ mod tests {
                             if Arc::ptr_eq(&lock.adj[d], &i) {
                                 println!("\t!{}: {}!", d, planet.handling_id);
                             } else {
-                                println!{"\t{}: {}", d, lock.adj[d].lock().unwrap().handling_id};
+                                println! {"\t{}: {}", d, lock.adj[d].lock().unwrap().handling_id};
                             }
                         }
                     }
-                    assert!(!Arc::ptr_eq(&planet.adj[ii], &planet.adj[iii]), "All adjacencies should be unique")
+                    assert!(
+                        !Arc::ptr_eq(&planet.adj[ii], &planet.adj[iii]),
+                        "All adjacencies should be unique"
+                    )
                 }
             }
         }
@@ -576,11 +590,14 @@ mod tests {
         let some_adj: f64 = 80.0;
         let galaxy = Galaxy::from_random_distribution(count, some_adj);
 
-        for i in galaxy.planets.values() { //For every planet A
-            for ii in i.lock().unwrap().adj.iter() { //For every planet B: A->B
+        for i in galaxy.planets.values() {
+            //For every planet A
+            for ii in i.lock().unwrap().adj.iter() {
+                //For every planet B: A->B
                 let mut has_self = false;
                 let mut planet = ii.lock().unwrap();
-                for iii in planet.adj.iter() {//For every planet C: B->C
+                for iii in planet.adj.iter() {
+                    //For every planet C: B->C
                     has_self = Arc::ptr_eq(iii, i) || has_self; //Check A == C
                 }
                 assert!(has_self, "Edge is symmetric");
@@ -590,7 +607,6 @@ mod tests {
 
     #[test]
     fn test_serialize_deserialize() {
-
         let pre_galaxy = Galaxy::from_random_distribution(1000, 80.0);
 
         let jstr = serde_json::to_string(&pre_galaxy)
@@ -598,8 +614,11 @@ mod tests {
         let post_galaxy: Galaxy = serde_json::from_str::<Galaxy>(&jstr.as_str())
             .expect("A valid json galaxy should always be deserializeable");
 
-        fn eq_planets(pl1: &Arc<Mutex<PlanetContainer>>, pl2: &Arc<Mutex<PlanetContainer>>) -> bool {
-            fn gather_data(pl:&Arc<Mutex<PlanetContainer>>) -> (PlanetVendor, ID, HashSet<ID>) {
+        fn eq_planets(
+            pl1: &Arc<Mutex<PlanetContainer>>,
+            pl2: &Arc<Mutex<PlanetContainer>>,
+        ) -> bool {
+            fn gather_data(pl: &Arc<Mutex<PlanetContainer>>) -> (PlanetVendor, ID, HashSet<ID>) {
                 let lock = pl.lock().unwrap();
                 let vendor = lock.vendor.clone();
                 let id = lock.handling_id.clone();
@@ -610,27 +629,32 @@ mod tests {
                 }
 
                 (vendor, id, adj_ids)
-
             }
 
             gather_data(pl1) == gather_data(pl2)
         }
 
         for i in pre_galaxy.planets.keys() {
-            assert!(eq_planets(&pre_galaxy.planets[i], &post_galaxy.planets[i]), "All planets in pre are equal in post unchanged");
+            assert!(
+                eq_planets(&pre_galaxy.planets[i], &post_galaxy.planets[i]),
+                "All planets in pre are equal in post unchanged"
+            );
         }
 
         for i in post_galaxy.planets.keys() {
-            assert!(eq_planets(&pre_galaxy.planets[i], &post_galaxy.planets[i]), "All planets in post are equal in pre unchanged");
+            assert!(
+                eq_planets(&pre_galaxy.planets[i], &post_galaxy.planets[i]),
+                "All planets in post are equal in pre unchanged"
+            );
         }
     }
-    
-/*  //Enable this test if tou want to iterate something until it breaks
-    #[test]
-    fn brute_inconsisten_test() {
-        loop {
-            tests::test_rand_gen_no_cloning();
-        }
-    }
- */
+
+    /*  //Enable this test if tou want to iterate something until it breaks
+       #[test]
+       fn brute_inconsisten_test() {
+           loop {
+               tests::test_rand_gen_no_cloning();
+           }
+       }
+    */
 }
