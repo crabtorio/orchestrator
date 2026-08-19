@@ -31,9 +31,9 @@ impl Ai for RichardRandom {
         runflag: Arc<AtomicBool>,
         start: ID,
         end: ID,
-    ) { 
+    ) {
         log::debug!("AI: RichardRandom is born with range: {} - {}", start, end);
-            
+
         //Parameter-constants, allow control for how the chances chance
         const NOTHING_WEIGHT: i32 = 10;
         const SUN_WEIGHT: i32 = 5;
@@ -41,7 +41,8 @@ impl Ai for RichardRandom {
 
         while runflag.load(Relaxed) {
             let target: ID = rand::random_range(start..end);
-            let action: i32 = rand::random_range(1..(NOTHING_WEIGHT + SUN_WEIGHT + ASTEROID_WEIGHT));
+            let action: i32 =
+                rand::random_range(1..(NOTHING_WEIGHT + SUN_WEIGHT + ASTEROID_WEIGHT));
             log::trace!("AI: RichardRandom rolled {} on {}", action, target);
 
             let mut lock = ai_queue.lock().unwrap();
@@ -49,7 +50,7 @@ impl Ai for RichardRandom {
                 //Send sunray to target
                 lock.push_back(Command::SendSunray(target));
                 log::debug!("AI: RichardRandom Sent Sunray to planet ID: {}", target);
-            } else if !(action<= NOTHING_WEIGHT) {
+            } else if !(action <= NOTHING_WEIGHT) {
                 //Send asteroid to target
                 lock.push_back(Command::SendSunray(target));
                 log::debug!("AI: RichardRandom Sent Asteroid to planet ID: {}", target);
@@ -62,7 +63,10 @@ impl Ai for RichardRandom {
                 1.0.. => 2000,
                 _ => (1000 + (sleep_offset * 1000.0).round() as i32) as u64,
             };
-            log::trace!("AI: RichardRandom Sleeping for: {} milliseconds", sleep_time);
+            log::trace!(
+                "AI: RichardRandom Sleeping for: {} milliseconds",
+                sleep_time
+            );
             let sleep_millis = time::Duration::from_millis(sleep_time);
             thread::sleep(sleep_millis);
         }

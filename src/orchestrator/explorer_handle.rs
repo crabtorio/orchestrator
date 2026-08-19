@@ -1,10 +1,17 @@
 use std::thread::{self, JoinHandle};
 
-use common_game::{protocols::{orchestrator_explorer::{ExplorerToOrchestrator, ExplorerToOrchestratorKind, OrchestratorToExplorer}, planet_explorer}, utils::ID};
+use common_game::{
+    protocols::{
+        orchestrator_explorer::{
+            ExplorerToOrchestrator, ExplorerToOrchestratorKind, OrchestratorToExplorer,
+        },
+        planet_explorer,
+    },
+    utils::ID,
+};
 use explorer_common::Bag;
 
 use crate::orchestrator::{ExplorerID, ExplorerVendor, LoggedChannel};
-
 
 pub struct ExplorerHandle {
     pub id: ExplorerID,
@@ -143,4 +150,3 @@ impl ExplorerHandle {
         }
     }
 }
-

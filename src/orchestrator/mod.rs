@@ -1,5 +1,5 @@
-mod shell;
 mod explorer_handle;
+mod shell;
 
 use explorer_handle::ExplorerHandle;
 
