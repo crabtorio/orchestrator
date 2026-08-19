@@ -398,9 +398,11 @@ dependencies = [
 [[package]]
 name = "explorer-common"
 version = "0.1.0"
-source = "git+https://github.com/crabtorio/explorer-common?branch=main#4dea9bbe720ee19f6cfbc5203d58613aca53de3e"
+source = "git+https://github.com/crabtorio/explorer-common?branch=main#ec9422c34ad6d547ec68edffc7da24097a8eb40f"
 dependencies = [
  "common-game",
+ "crossbeam-channel",
+ "log",
 ]
 
 [[package]]
@@ -1418,9 +1420,9 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "yaml-rust2"
-version = "0.11.0"
+version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "631a50d867fafb7093e709d75aaee9e0e0d5deb934021fcea25ac2fe09edc51e"
+checksum = "b36710ce3a279cfce8465dbab826f161675a262950b922cb2c3663852dfe9eb0"
 dependencies = [
  "arraydeque",
  "encoding_rs",
