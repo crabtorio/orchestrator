@@ -29,20 +29,20 @@ pub type PausedExploererHandle = ExplorerHandle<Born<Placed<Paused>>>;
 pub type RunningExploererHandle = ExplorerHandle<Born<Placed<Running>>>;
 
 pub struct ExplorerHandle<State> {
-    pub id: ExplorerID,
-    pub explorer_vendor: ExplorerVendor,
-    pub state: State,
+    id: ExplorerID,
+    explorer_vendor: ExplorerVendor,
+    state: State,
 }
 pub struct Unborn;
 pub struct Born<Location> {
-    pub channel: Channel,
-    pub handle: JoinHandle<()>,
-    pub location: Location,
+    channel: Channel,
+    handle: JoinHandle<()>,
+    location: Location,
 }
 pub struct Unplaced;
 pub struct Placed<Substate> {
-    pub planet_id: ID,
-    pub run_state: Substate,
+    planet_id: ID,
+    run_state: Substate,
 }
 pub struct Paused;
 pub struct Running;
