@@ -1,5 +1,8 @@
 use std::thread::{self, JoinHandle};
 
+use crate::orchestrator::{ExplorerID, ExplorerVendor};
+use explorer_common::logged_channel::LoggedChannel;
+
 use common_game::{
     protocols::{
         orchestrator_explorer::{
@@ -10,8 +13,6 @@ use common_game::{
     utils::ID,
 };
 use explorer_common::Bag;
-
-use crate::orchestrator::{ExplorerID, ExplorerVendor, LoggedChannel};
 
 pub struct ExplorerHandle {
     pub id: ExplorerID,
@@ -35,11 +36,7 @@ impl ExplorerHandle {
             id,
             handle,
             current_planet,
-            channel: LoggedChannel::<OrchestratorToExplorer, ExplorerToOrchestrator<Bag>> {
-                sender: ex_sender,
-                reciever: ox_reciever,
-                reciever_ident: "()".to_string(),
-            },
+            channel: LoggedChannel::new(ox_reciever, ex_sender, "TODO".to_string()),
         }
     }
 
@@ -138,8 +135,8 @@ impl ExplorerHandle {
                 }
                 _ => {
                     log::error!(
-                        "Invalid response from {:?}. Expected {:?}, got {:?}",
-                        self.channel.reciever_ident,
+                        "Invalid response from Explorer {:?}. Expected {:?}, got {:?}",
+                        self.id as ID,
                         ExplorerToOrchestratorKind::MovedToPlanetResult,
                         val
                     );
