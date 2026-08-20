@@ -1,8 +1,6 @@
 mod explorer_handle;
 mod shell;
 
-use explorer_handle::ExplorerHandle;
-
 use crate::galaxy_generator::{Galaxy, PlanetContainer};
 use crate::orchestrator::Command::*;
 use crate::orchestrator::ai::AiType::RichardRandom as RichardRandomType;
@@ -303,41 +301,15 @@ impl Orchestrator {
         explorers: &mut HashMap<ExplorerID, RunningExploererHandle>,
     ) -> Result<(), ExplorerID> {
         for (explorer_index, explorer) in explorers.iter_mut() {
-            let result = match explorer.poll() {
-                //There was an error while polling
-                Err(_) => Err(*explorer_index),
-                //No request found
-                Ok(None) => continue,
-                //Handle the request
-                Ok(Some(request)) => match request {
-                    ExplorerToOrchestrator::NeighborsRequest {
-                        explorer_id: _,
-                        current_planet_id,
-                    } => explorer.handle_neighbhors_request(&self.galaxy, current_planet_id),
-                    ExplorerToOrchestrator::TravelToPlanetRequest {
-                        explorer_id: _,
-                        current_planet_id,
-                        dst_planet_id,
-                    } => explorer.handle_travel_to_planet_request(
-                        &self.galaxy,
-                        current_planet_id,
-                        dst_planet_id,
-                    ),
-                    _ => {
-                        log::error!(
-                            "Explorer sent response {:?} while orchestrator awiating for requests",
-                            request
-                        );
-                        Err(())
-                    }
-                }
-                .map_err(|_| *explorer_index),
-            };
-
-            return result;
+            let result = explorer.handle_one_request(&self.galaxy);
+            match result {
+                Ok(true) => return Ok(()),
+                Ok(false) => continue,
+                Err(()) => return Err(*explorer_index),
+            }
         }
 
-        return Ok(());
+        Ok(())
     }
 }
 

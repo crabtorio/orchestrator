@@ -2,20 +2,24 @@ use std::{
     format,
     marker::PhantomData,
     thread::{self, JoinHandle},
-    todo,
-    vec,
+    todo, vec,
 };
 
-use crate::{galaxy_generator::Galaxy, orchestrator::{ExplorerID, ExplorerVendor}};
+use crate::{
+    galaxy_generator::Galaxy,
+    orchestrator::{ExplorerID, ExplorerVendor},
+};
 use explorer_common::logged_channel::LoggedChannel;
 
 use common_game::{
-    logging::EventType::MessageExplorerToOrchestrator, protocols::{
+    logging::EventType::MessageExplorerToOrchestrator,
+    protocols::{
         orchestrator_explorer::{
             ExplorerToOrchestrator, ExplorerToOrchestratorKind, OrchestratorToExplorer,
         },
         planet_explorer,
-    }, utils::ID,
+    },
+    utils::ID,
 };
 use explorer_common::Bag;
 
@@ -235,14 +239,44 @@ impl ExplorerHandle<Born<Placed<Running>>> {
         }
     }
 
-    pub fn poll(&self) -> Result<std::option::Option<ExplorerToOrchestrator<Bag>>, ()> {
-        self.state.channel.poll()
+    /// Hanldles a single incoming request from the explorer.
+    /// ---
+    /// Returns:
+    /// - Ok(true) if a reqeust was handled
+    /// - Ok(false) if a request was not handled
+    /// - Err(()) when an internal error occurs
+    pub fn handle_one_request(&mut self, galaxy: &Galaxy) -> Result<bool, ()> {
+        let result = match self.state.channel.poll() {
+            //There was an error while polling
+            Err(_) => Err(()),
+            //No request found
+            Ok(None) => Ok(false),
+            //Handle the request
+            Ok(Some(request)) => match request {
+                ExplorerToOrchestrator::NeighborsRequest {
+                    explorer_id: _,
+                    current_planet_id,
+                } => self.handle_neighbhors_request(galaxy, current_planet_id),
+                ExplorerToOrchestrator::TravelToPlanetRequest {
+                    explorer_id: _,
+                    current_planet_id,
+                    dst_planet_id,
+                } => self.handle_travel_to_planet_request(galaxy, current_planet_id, dst_planet_id),
+                _ => {
+                    log::error!(
+                        "Explorer sent response {:?} while orchestrator awiating for requests",
+                        request
+                    );
+                    Err(())
+                }
+            }
+            .map(|_| true),
+        };
+
+        return result;
     }
 
-    pub fn handle_neighbhors_request(&self,
-        galaxy: &Galaxy,
-        current_planet_id: ID,
-    ) -> Result<(), ()> {
+    fn handle_neighbhors_request(&self, galaxy: &Galaxy, current_planet_id: ID) -> Result<(), ()> {
         let neighbors = if self.state.location.planet_id != current_planet_id {
             log::error!(
                 "Explorer {:?} is requesting for neighbhors of a planet it is not on",
@@ -268,7 +302,8 @@ impl ExplorerHandle<Born<Placed<Running>>> {
             }
         };
         if self
-            .state.channel
+            .state
+            .channel
             .send(OrchestratorToExplorer::NeighborsResponse { neighbors })
             .is_err()
         {
@@ -278,7 +313,8 @@ impl ExplorerHandle<Born<Placed<Running>>> {
         }
     }
 
-    pub fn handle_travel_to_planet_request(&mut self,
+    fn handle_travel_to_planet_request(
+        &mut self,
         galaxy: &Galaxy,
         current_planet_id: ID,
         dst_planet_id: ID,
@@ -291,7 +327,7 @@ impl ExplorerHandle<Born<Placed<Running>>> {
             );
             None
         } else {
-                galaxy
+            galaxy
                 .planets
                 .get(&current_planet_id)
                 .map(|current_planet| {
@@ -299,8 +335,7 @@ impl ExplorerHandle<Born<Placed<Running>>> {
                         .lock()
                         .expect("Planet thread must not be poisoned");
                     current_planet.adj.iter().find_map(|neighbor| {
-                        let neighbor =
-                            neighbor.lock().expect("Planet thread must not be poisoned");
+                        let neighbor = neighbor.lock().expect("Planet thread must not be poisoned");
                         (neighbor.id() == dst_planet_id).then(|| neighbor.tx_explorer.clone())
                     })
                 })
@@ -314,7 +349,6 @@ impl ExplorerHandle<Born<Placed<Running>>> {
             None => self.move_to_planet_intnl(None, self.state.location.planet_id),
         }
     }
-
 }
 
 pub fn new(id: ExplorerID, explorer_vendor: ExplorerVendor) -> ExplorerHandle<Unborn> {
