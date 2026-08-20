@@ -119,12 +119,41 @@ impl<Any> ExplorerHandle<Born<Any>> {
         }
     }
 
-    fn ensure_id_matches(&self, explorer_id: ID, err_message: &str) -> Result<(), ()> {
+    pub fn get_bag_content(&self) -> Result<Bag, ()> {
+        self.state
+            .channel
+            .send(OrchestratorToExplorer::BagContentRequest)
+            .map_err(|_| {})?;
+        let response = self.state.channel.recv().map_err(|_| {})?;
+        match response {
+            ExplorerToOrchestrator::BagContentResponse {
+                explorer_id,
+                bag_content,
+            } => {
+                self.ensure_id_matches(explorer_id)?;
+                Ok(bag_content)
+            }
+            other => {
+                let expected = ExplorerToOrchestratorKind::BagContentResponse;
+                self.make_inbound_msg_log_event(
+                    LogChannel::Error,
+                    Payload::from([
+                        ("Message".into(), "Recieved invalid response".into()),
+                        ("Expected".into(), format!("{expected:?}")),
+                        ("Got".into(), format!("{other:?}")),
+                    ]),
+                );
+                Err(())
+            }
+        }
+    }
+
+    fn ensure_id_matches(&self, explorer_id: ID) -> Result<(), ()> {
         if explorer_id != self.id as ID {
             self.make_inbound_msg_log_event(
                 LogChannel::Error,
                 Payload::from([
-                    ("Message".into(), err_message.into()),
+                    ("Message".into(), "Explorer returned incoherent ID".into()),
                     ("Expected".into(), format!("{}", self.id)),
                     ("Got".into(), format!("{explorer_id}")),
                 ]),
@@ -204,7 +233,7 @@ impl<Any> ExplorerHandle<Born<Placed<Any>>> {
                     explorer_id,
                     planet_id: planet_id_resp,
                 } => {
-                    self.ensure_id_matches(explorer_id, "Recieved unexpected ID")?;
+                    self.ensure_id_matches(explorer_id)?;
 
                     let old_planet_id = self.state.location.planet_id;
                     self.state.location.planet_id = planet_id;
@@ -358,7 +387,7 @@ impl ExplorerHandle<Born<Placed<Running>>> {
                     current_planet_id,
                     dst_planet_id,
                 ),
-                other => {
+                _ => {
                     self.make_inbound_msg_log_event(
                         LogChannel::Error,
                         Payload::from([
@@ -376,7 +405,7 @@ impl ExplorerHandle<Born<Placed<Running>>> {
                                     ]
                                 ),
                             ),
-                            ("Got".into(), format!("{other:?}")),
+                            ("Got".into(), format!("{request:?}")),
                         ]),
                     )
                     .emit();
@@ -395,15 +424,12 @@ impl ExplorerHandle<Born<Placed<Running>>> {
         explorer_id: ID,
         current_planet_id: ID,
     ) -> Result<(), ()> {
-        let assertions_result = self
-            .ensure_id_matches(
-                explorer_id,
-                "Returned Explorer ID does not match what is expected",
-            )
-            .and(self.ensure_planet_matches(
-                current_planet_id,
-                "Explorer asked for neighbhors of planet it is not on",
-            ));
+        let assertions_result =
+            self.ensure_id_matches(explorer_id)
+                .and(self.ensure_planet_matches(
+                    current_planet_id,
+                    "Explorer asked for neighbhors of planet it is not on",
+                ));
 
         let neighbors = if assertions_result.is_err() {
             vec![]
@@ -445,10 +471,7 @@ impl ExplorerHandle<Born<Placed<Running>>> {
                 current_planet_id,
                 "Explorer tried to move out of planet it is not on",
             )
-            .and(self.ensure_id_matches(
-                recv_explorer_id,
-                "Returned Explorer ID does not match what is expected",
-            ));
+            .and(self.ensure_id_matches(recv_explorer_id));
 
         let maybe_explorer_to_planet = if assertions_result.is_err() {
             None
