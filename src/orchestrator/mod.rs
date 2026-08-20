@@ -7,6 +7,7 @@ use crate::galaxy_generator::{Galaxy, PlanetContainer};
 use crate::orchestrator::Command::*;
 use crate::orchestrator::ai::AiType::RichardRandom as RichardRandomType;
 use crate::orchestrator::ai::{Ai, AiType, RichardRandom};
+use crate::orchestrator::explorer_handle::{RunningExploererHandle, UnbornExploererHandle};
 use crate::orchestrator::shell::Shell;
 use common_game::components::asteroid::Asteroid;
 use common_game::components::planet::DummyPlanetState;
@@ -67,7 +68,7 @@ pub struct PlanetHandle {
     tx_explorer: crossbeam_channel::Sender<planet_explorer::ExplorerToPlanet>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ExplorerID {
     First = 0,
     Second = 1,
@@ -162,17 +163,25 @@ impl Orchestrator {
 
         let shell = Shell::new(self.user_queue.clone());
         let shell_handle = thread::spawn(move || shell.run());
-        let planet_id = ID::MAX; //TMP
-        let mut explorer_handles = match &self.explorers {
-            Explorers::One(explorer_vendor) => vec![ExplorerHandle::spawn(
+
+        let mut running_explorer_handles = HashMap::new();
+
+        //Add the unborn explorer handles to the appropriate map
+        let mut unborn_explorer_handles = match &self.explorers {
+            Explorers::One(explorer_vendor) => HashMap::from([(
                 ExplorerID::First,
-                *explorer_vendor,
-                planet_id,
-            )],
-            Explorers::Two(explorer_vendor, explorer_vendor1) => vec![
-                ExplorerHandle::spawn(ExplorerID::First, *explorer_vendor, planet_id),
-                ExplorerHandle::spawn(ExplorerID::Second, *explorer_vendor1, planet_id),
-            ],
+                explorer_handle::new(ExplorerID::First, *explorer_vendor),
+            )]),
+            Explorers::Two(explorer_vendor1, explorer_vendor2) => HashMap::from([
+                (
+                    ExplorerID::First,
+                    explorer_handle::new(ExplorerID::First, *explorer_vendor1),
+                ),
+                (
+                    ExplorerID::Second,
+                    explorer_handle::new(ExplorerID::Second, *explorer_vendor1),
+                ),
+            ]),
         };
 
         loop {
@@ -188,12 +197,16 @@ impl Orchestrator {
                 if let Some(command) = command {
                     command
                 } else {
-                    if let Err(explorer_index) = self.poll_and_handle_first_req(&explorer_handles) {
+                    if let Err(explorer_index) =
+                        self.poll_and_handle_first_req(&mut running_explorer_handles)
+                    {
                         //An error occured while handling an explorer's request.
                         //In this case we chose to kill the explorer and continue execution with a single explorer
                         log::info!("Attempting to kill explorer due to previous error");
-                        let explorer = explorer_handles.remove(explorer_index);
-                        match explorer.kill_explorer() {
+                        let explorer = running_explorer_handles
+                            .remove(&explorer_index)
+                            .expect("Explorer got removed");
+                        match explorer.kill_explorer_ai() {
                             Ok(join_handle) => {
                                 join_handle.join();
                             }
@@ -285,11 +298,14 @@ impl Orchestrator {
     }
 
     ///Poll explorers and handle first found request. Reutnrs `Err(explorer_index)` if there is an error while handling an explorer's request
-    fn poll_and_handle_first_req(&mut self, explorers: &Vec<ExplorerHandle>) -> Result<(), usize> {
-        for (explorer_index, explorer) in explorers.iter().enumerate() {
-            let result = match explorer.channel.poll() {
+    fn poll_and_handle_first_req(
+        &mut self,
+        explorers: &mut HashMap<ExplorerID, RunningExploererHandle>,
+    ) -> Result<(), ExplorerID> {
+        for (explorer_index, explorer) in explorers.iter_mut() {
+            let result = match explorer.poll() {
                 //There was an error while polling
-                Err(_) => Err(explorer_index),
+                Err(_) => Err(*explorer_index),
                 //No request found
                 Ok(None) => continue,
                 //Handle the request
@@ -297,14 +313,13 @@ impl Orchestrator {
                     ExplorerToOrchestrator::NeighborsRequest {
                         explorer_id: _,
                         current_planet_id,
-                    } => handle_neighbhors_request(self, explorer, current_planet_id),
+                    } => explorer.handle_neighbhors_request(&self.galaxy, current_planet_id),
                     ExplorerToOrchestrator::TravelToPlanetRequest {
                         explorer_id: _,
                         current_planet_id,
                         dst_planet_id,
-                    } => handle_travel_to_planet_request(
-                        self,
-                        explorer,
+                    } => explorer.handle_travel_to_planet_request(
+                        &self.galaxy,
                         current_planet_id,
                         dst_planet_id,
                     ),
@@ -316,94 +331,13 @@ impl Orchestrator {
                         Err(())
                     }
                 }
-                .map_err(|_| explorer_index),
+                .map_err(|_| *explorer_index),
             };
 
             return result;
         }
 
         return Ok(());
-
-        //--- Reqeust handle helpers ---
-
-        fn handle_neighbhors_request(
-            orchestrator: &Orchestrator,
-            explorer: &ExplorerHandle,
-            current_planet_id: ID,
-        ) -> Result<(), ()> {
-            let neighbors = if explorer.current_planet != current_planet_id {
-                log::error!(
-                    "Explorer {:?} is requesting for neighbhors of a planet it is not on",
-                    explorer.id as ID
-                );
-                vec![]
-            } else {
-                match orchestrator.galaxy.planets.get(&current_planet_id) {
-                    Some(planet) => planet
-                        .lock()
-                        .expect("Not poisoned")
-                        .adj
-                        .iter()
-                        .map(|planet| planet.lock().expect("Not poisoned").id())
-                        .collect(),
-                    None => {
-                        log::error!(
-                            "Explorer {:?} is somehow on invalid/dead planet",
-                            explorer.id as ID
-                        );
-                        vec![]
-                    }
-                }
-            };
-            if explorer
-                .channel
-                .send(OrchestratorToExplorer::NeighborsResponse { neighbors })
-                .is_err()
-            {
-                Err(())
-            } else {
-                Ok(())
-            }
-        }
-
-        fn handle_travel_to_planet_request(
-            orchestrator: &Orchestrator,
-            explorer: &ExplorerHandle,
-            current_planet_id: ID,
-            dst_planet_id: ID,
-        ) -> Result<(), ()> {
-            //Check if the explorer can reach the planet
-            let travel_to_planet = if explorer.current_planet != current_planet_id {
-                log::error!(
-                    "Explorer {:?} tried to move out of planet it is not on",
-                    explorer.id as ID
-                );
-                None
-            } else {
-                orchestrator
-                    .galaxy
-                    .planets
-                    .get(&current_planet_id)
-                    .map(|current_planet| {
-                        let current_planet = current_planet
-                            .lock()
-                            .expect("Planet thread must not be poisoned");
-                        current_planet.adj.iter().find_map(|neighbor| {
-                            let neighbor =
-                                neighbor.lock().expect("Planet thread must not be poisoned");
-                            (neighbor.id() == dst_planet_id).then(|| neighbor.tx_explorer.clone())
-                        })
-                    })
-                    .flatten()
-            };
-
-            match travel_to_planet {
-                //Success
-                Some(tx_explorer) => explorer.move_to_planet(Some(tx_explorer), dst_planet_id),
-                //Failure (Don't move)
-                None => explorer.move_to_planet(None, explorer.current_planet),
-            }
-        }
     }
 }
 
