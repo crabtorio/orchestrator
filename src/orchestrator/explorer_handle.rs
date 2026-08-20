@@ -1,8 +1,9 @@
 use std::{
+    fmt::format,
     format,
     marker::PhantomData,
     thread::{self, JoinHandle},
-    todo, vec,
+    vec,
 };
 
 use crate::{
@@ -12,7 +13,7 @@ use crate::{
 use explorer_common::logged_channel::LoggedChannel;
 
 use common_game::{
-    logging::EventType::MessageExplorerToOrchestrator,
+    logging::{ActorType, Channel as LogChannel, EventType, LogEvent, Participant, Payload},
     protocols::{
         orchestrator_explorer::{
             ExplorerToOrchestrator, ExplorerToOrchestratorKind, OrchestratorToExplorer,
@@ -47,13 +48,47 @@ pub struct Placed<Substate> {
 pub struct Paused;
 pub struct Running;
 
+impl<Any> ExplorerHandle<Any> {
+    fn make_internal_log_event(&self, channel: LogChannel, payload: Payload) -> LogEvent {
+        LogEvent::self_directed(
+            Participant {
+                actor_type: ActorType::Explorer,
+                id: self.id as u32,
+            },
+            EventType::InternalExplorerAction,
+            channel,
+            payload,
+        )
+    }
+
+    fn make_inbound_msg_log_event(&self, channel: LogChannel, payload: Payload) -> LogEvent {
+        LogEvent::new(
+            Some(Participant {
+                actor_type: ActorType::Explorer,
+                id: self.id as u32,
+            }),
+            Some(Participant {
+                actor_type: ActorType::Orchestrator,
+                id: self.id as u32,
+            }),
+            EventType::MessageExplorerToOrchestrator,
+            channel,
+            payload,
+        )
+    }
+}
+
 impl<Any> ExplorerHandle<Born<Any>> {
     pub fn kill_explorer_ai(self) -> Result<JoinHandle<()>, ()> {
         if let Ok(_) = self.state.channel.send_and_check_ack(
             OrchestratorToExplorer::KillExplorer,
             ExplorerToOrchestratorKind::KillExplorerResult,
         ) {
-            log::info!("Explorer {} killed", self.id);
+            self.make_internal_log_event(
+                LogChannel::Info,
+                Payload::from([("Message".into(), "Killed".into())]),
+            )
+            .emit();
             Ok(self.state.handle)
         } else {
             Err(())
@@ -65,7 +100,11 @@ impl<Any> ExplorerHandle<Born<Any>> {
             OrchestratorToExplorer::ResetExplorerAI,
             ExplorerToOrchestratorKind::ResetExplorerAIResult,
         ) {
-            log::info!("Explorer {} killed", self.id);
+            self.make_internal_log_event(
+                LogChannel::Info,
+                Payload::from([("Message".into(), "Reset".into())]),
+            )
+            .emit();
             Ok(ExplorerHandle {
                 id: self.id,
                 explorer_vendor: self.explorer_vendor,
@@ -77,6 +116,23 @@ impl<Any> ExplorerHandle<Born<Any>> {
             })
         } else {
             Err(())
+        }
+    }
+
+    fn ensure_id_matches(&self, explorer_id: ID, err_message: &str) -> Result<(), ()> {
+        if explorer_id != self.id as ID {
+            self.make_inbound_msg_log_event(
+                LogChannel::Error,
+                Payload::from([
+                    ("Message".into(), err_message.into()),
+                    ("Expected".into(), format!("{}", self.id)),
+                    ("Got".into(), format!("{explorer_id}")),
+                ]),
+            )
+            .emit();
+            Err(())
+        } else {
+            Ok(())
         }
     }
 }
@@ -99,6 +155,14 @@ impl ExplorerHandle<Unborn> {
             OrchestratorToExplorer::StartExplorerAI,
             ExplorerToOrchestratorKind::StartExplorerAIResult,
         ) {
+            self.make_internal_log_event(
+                LogChannel::Info,
+                Payload::from([
+                    ("Message".into(), "Initialized".into()),
+                    ("Planet".into(), format!("{planet_id:}")),
+                ]),
+            )
+            .emit();
             Ok(ExplorerHandle {
                 id: self.id,
                 explorer_vendor: self.explorer_vendor,
@@ -140,44 +204,61 @@ impl<Any> ExplorerHandle<Born<Placed<Any>>> {
                     explorer_id,
                     planet_id: planet_id_resp,
                 } => {
-                    if explorer_id != self.id as ID {
-                        log::error!(
-                            "Explorer {:?} returned incohernet ID {:?} when sending {:?}",
-                            self.id as ID,
-                            explorer_id,
-                            planet_id_resp
-                        );
-                        return Err(());
-                    }
-                    if planet_id != planet_id_resp {
-                        log::error!(
-                            "Explorer {:?} returned incohernet planet ID {:?} when sending {:?}",
-                            self.id as ID,
-                            planet_id,
-                            planet_id_resp
-                        );
-                        return Err(());
-                    }
+                    self.ensure_id_matches(explorer_id, "Recieved unexpected ID")?;
 
-                    log::info!(
-                        "Explorer {:?} moved to planet {:?}",
-                        self.id as ID,
-                        planet_id
-                    );
+                    let old_planet_id = self.state.location.planet_id;
+                    self.state.location.planet_id = planet_id;
+
+                    //Check if the returned planet actually matches what is expected, if not the change is reverted and Err(()) is returned
+                    self.ensure_planet_matches(
+                        planet_id_resp,
+                        "Explorer returned unexpected planet_id after move",
+                    )
+                    .map_err(|_| self.state.location.planet_id = old_planet_id)?;
+
+                    self.make_internal_log_event(
+                        LogChannel::Error,
+                        Payload::from([
+                            ("Message".into(), "Explorer moved to planet".into()),
+                            ("Planet".into(), format!("{planet_id:}")),
+                        ]),
+                    )
+                    .emit();
                     self.state.location.planet_id = planet_id;
                     Ok(())
                 }
                 _ => {
-                    log::error!(
-                        "Invalid response from Explorer {:?}. Expected {:?}, got {:?}",
-                        self.id as ID,
-                        ExplorerToOrchestratorKind::MovedToPlanetResult,
-                        val
-                    );
+                    let expected = ExplorerToOrchestratorKind::MovedToPlanetResult;
+                    self.make_inbound_msg_log_event(
+                        LogChannel::Error,
+                        Payload::from([
+                            ("Message".into(), "Recieved invalid response".into()),
+                            ("Expected".into(), format!("{expected:?}")),
+                            ("Got".into(), format!("{:?}", val)),
+                        ]),
+                    )
+                    .emit();
                     Err(())
                 }
             },
             Err(_) => Err(()),
+        }
+    }
+
+    fn ensure_planet_matches(&self, planet_id: ID, err_message: &str) -> Result<(), ()> {
+        if planet_id != self.state.location.planet_id as ID {
+            self.make_inbound_msg_log_event(
+                LogChannel::Error,
+                Payload::from([
+                    ("Message".into(), err_message.into()),
+                    ("Expected".into(), format!("{}", self.id)),
+                    ("Got".into(), format!("{planet_id}")),
+                ]),
+            )
+            .emit();
+            Err(())
+        } else {
+            Ok(())
         }
     }
 }
@@ -188,6 +269,11 @@ impl ExplorerHandle<Born<Placed<Paused>>> {
             OrchestratorToExplorer::StartExplorerAI,
             ExplorerToOrchestratorKind::StartExplorerAIResult,
         ) {
+            self.make_internal_log_event(
+                LogChannel::Info,
+                Payload::from([("Message".into(), "Unpaused".into())]),
+            )
+            .emit();
             Ok(ExplorerHandle {
                 id: self.id,
                 explorer_vendor: self.explorer_vendor,
@@ -222,6 +308,11 @@ impl ExplorerHandle<Born<Placed<Running>>> {
             OrchestratorToExplorer::StopExplorerAI,
             ExplorerToOrchestratorKind::StopExplorerAIResult,
         ) {
+            self.make_internal_log_event(
+                LogChannel::Info,
+                Payload::from([("Message".into(), "Paused".into())]),
+            )
+            .emit();
             Ok(ExplorerHandle {
                 id: self.id,
                 explorer_vendor: self.explorer_vendor,
@@ -254,19 +345,41 @@ impl ExplorerHandle<Born<Placed<Running>>> {
             //Handle the request
             Ok(Some(request)) => match request {
                 ExplorerToOrchestrator::NeighborsRequest {
-                    explorer_id: _,
+                    explorer_id: recvd_explorer_id,
                     current_planet_id,
-                } => self.handle_neighbhors_request(galaxy, current_planet_id),
+                } => self.handle_neighbhors_request(galaxy, recvd_explorer_id, current_planet_id),
                 ExplorerToOrchestrator::TravelToPlanetRequest {
-                    explorer_id: _,
+                    explorer_id: recvd_explorer_id,
                     current_planet_id,
                     dst_planet_id,
-                } => self.handle_travel_to_planet_request(galaxy, current_planet_id, dst_planet_id),
-                _ => {
-                    log::error!(
-                        "Explorer sent response {:?} while orchestrator awiating for requests",
-                        request
-                    );
+                } => self.handle_travel_to_planet_request(
+                    galaxy,
+                    recvd_explorer_id,
+                    current_planet_id,
+                    dst_planet_id,
+                ),
+                other => {
+                    self.make_inbound_msg_log_event(
+                        LogChannel::Error,
+                        Payload::from([
+                            (
+                                "Message".into(),
+                                "Recieved response while awaiting requests".into(),
+                            ),
+                            (
+                                "Expected".into(),
+                                format!(
+                                    "One of {:?}",
+                                    [
+                                        ExplorerToOrchestratorKind::TravelToPlanetRequest,
+                                        ExplorerToOrchestratorKind::NeighborsRequest
+                                    ]
+                                ),
+                            ),
+                            ("Got".into(), format!("{other:?}")),
+                        ]),
+                    )
+                    .emit();
                     Err(())
                 }
             }
@@ -276,12 +389,23 @@ impl ExplorerHandle<Born<Placed<Running>>> {
         return result;
     }
 
-    fn handle_neighbhors_request(&self, galaxy: &Galaxy, current_planet_id: ID) -> Result<(), ()> {
-        let neighbors = if self.state.location.planet_id != current_planet_id {
-            log::error!(
-                "Explorer {:?} is requesting for neighbhors of a planet it is not on",
-                self.id as ID
-            );
+    fn handle_neighbhors_request(
+        &self,
+        galaxy: &Galaxy,
+        explorer_id: ID,
+        current_planet_id: ID,
+    ) -> Result<(), ()> {
+        let assertions_result = self
+            .ensure_id_matches(
+                explorer_id,
+                "Returned Explorer ID does not match what is expected",
+            )
+            .and(self.ensure_planet_matches(
+                current_planet_id,
+                "Explorer asked for neighbhors of planet it is not on",
+            ));
+
+        let neighbors = if assertions_result.is_err() {
             vec![]
         } else {
             match galaxy.planets.get(&current_planet_id) {
@@ -292,15 +416,10 @@ impl ExplorerHandle<Born<Placed<Running>>> {
                     .iter()
                     .map(|planet| planet.lock().expect("Not poisoned").id())
                     .collect(),
-                None => {
-                    log::error!(
-                        "Explorer {:?} is somehow on invalid/dead planet",
-                        self.id as ID
-                    );
-                    vec![]
-                }
+                None => vec![],
             }
         };
+
         if self
             .state
             .channel
@@ -311,43 +430,54 @@ impl ExplorerHandle<Born<Placed<Running>>> {
         } else {
             Ok(())
         }
+        .and(assertions_result) //If some previos assertion has failed, return Err(())
     }
 
     fn handle_travel_to_planet_request(
         &mut self,
         galaxy: &Galaxy,
+        recv_explorer_id: ID,
         current_planet_id: ID,
         dst_planet_id: ID,
     ) -> Result<(), ()> {
-        //Check if the explorer can reach the planet
-        let travel_to_planet = if self.state.location.planet_id != current_planet_id {
-            log::error!(
-                "Explorer {:?} tried to move out of planet it is not on",
-                self.id as ID
-            );
+        let assertions_result = self
+            .ensure_planet_matches(
+                current_planet_id,
+                "Explorer tried to move out of planet it is not on",
+            )
+            .and(self.ensure_id_matches(
+                recv_explorer_id,
+                "Returned Explorer ID does not match what is expected",
+            ));
+
+        let maybe_explorer_to_planet = if assertions_result.is_err() {
             None
         } else {
             galaxy
                 .planets
                 .get(&current_planet_id)
                 .map(|current_planet| {
-                    let current_planet = current_planet
+                    current_planet
                         .lock()
-                        .expect("Planet thread must not be poisoned");
-                    current_planet.adj.iter().find_map(|neighbor| {
-                        let neighbor = neighbor.lock().expect("Planet thread must not be poisoned");
-                        (neighbor.id() == dst_planet_id).then(|| neighbor.tx_explorer.clone())
-                    })
+                        .expect("Planet thread must not be poisoned")
+                        .adj
+                        .iter()
+                        .find_map(|neighbor| {
+                            let neighbor =
+                                neighbor.lock().expect("Planet thread must not be poisoned");
+                            (neighbor.id() == dst_planet_id).then(|| neighbor.tx_explorer.clone())
+                        })
                 })
                 .flatten()
         };
 
-        match travel_to_planet {
+        match maybe_explorer_to_planet {
             //Success
             Some(tx_explorer) => self.move_to_planet_intnl(Some(tx_explorer), dst_planet_id),
-            //Failure (Don't move)
+            //Failure (Planet may have been killed before Explorer had a chance to react. Do not move)
             None => self.move_to_planet_intnl(None, self.state.location.planet_id),
         }
+        .and(assertions_result)
     }
 }
 
