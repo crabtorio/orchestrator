@@ -1,33 +1,30 @@
 use std::{
-    fmt::format,
+    collections::HashMap,
     format,
-    marker::PhantomData,
     thread::{self, JoinHandle},
     vec,
 };
 
 use crate::{
     galaxy_generator::Galaxy,
-    orchestrator::{ExplorerID, ExplorerVendor},
+    orchestrator::{ExplorerID, ExplorerVendor, PlanetHandle},
 };
 use explorer_common::logged_channel::LoggedChannel;
 
 use common_game::{
     logging::{ActorType, Channel as LogChannel, EventType, LogEvent, Participant, Payload},
-    protocols::{
-        orchestrator_explorer::{
-            ExplorerToOrchestrator, ExplorerToOrchestratorKind, OrchestratorToExplorer,
-        },
-        planet_explorer,
+    protocols::orchestrator_explorer::{
+        ExplorerToOrchestrator, ExplorerToOrchestratorKind, OrchestratorToExplorer,
     },
     utils::ID,
 };
 use explorer_common::Bag;
+use luna4::planet::PlanetToExplorer;
 
 pub type Channel = LoggedChannel<OrchestratorToExplorer, ExplorerToOrchestrator<Bag>>;
 pub type UnbornExploererHandle = ExplorerHandle<Unborn>;
-pub type PausedExploererHandle = ExplorerHandle<Born<Placed<Paused>>>;
-pub type RunningExploererHandle = ExplorerHandle<Born<Placed<Running>>>;
+pub type PausedExploererHandle<'a> = ExplorerHandle<Born<Placed<'a, Paused>>>;
+pub type RunningExploererHandle<'a> = ExplorerHandle<Born<Placed<'a, Running>>>;
 
 pub struct ExplorerHandle<State> {
     id: ExplorerID,
@@ -37,12 +34,13 @@ pub struct ExplorerHandle<State> {
 pub struct Unborn;
 pub struct Born<Location> {
     channel: Channel,
+    planet_sender: crossbeam_channel::Sender<PlanetToExplorer>,
     handle: JoinHandle<()>,
     location: Location,
 }
 pub struct Unplaced;
-pub struct Placed<Substate> {
-    planet_id: ID,
+pub struct Placed<'a, Substate> {
+    planet: &'a PlanetHandle,
     run_state: Substate,
 }
 pub struct Paused;
@@ -111,6 +109,7 @@ impl<Any> ExplorerHandle<Born<Any>> {
                 state: Born {
                     channel: self.state.channel,
                     handle: self.state.handle,
+                    planet_sender: self.state.planet_sender,
                     location: Unplaced,
                 },
             })
@@ -166,17 +165,19 @@ impl<Any> ExplorerHandle<Born<Any>> {
     }
 }
 
-impl ExplorerHandle<Unborn> {
+impl<'a> ExplorerHandle<Unborn> {
     pub fn init_explorer_ai(
         self,
-        planet_id: ID,
-    ) -> Result<ExplorerHandle<Born<Placed<Running>>>, ()> {
+        planet_handle: &'a PlanetHandle,
+    ) -> Result<ExplorerHandle<Born<Placed<'a, Running>>>, ()> {
         let (ex_sender, ex_reciever) = crossbeam_channel::unbounded();
         let (ox_sender, ox_reciever) = crossbeam_channel::unbounded();
+        let (planet_sender, planet_reciever) = crossbeam_channel::unbounded();
 
         let handle = thread::spawn(move || {
             ex_reciever;
             ox_sender;
+            planet_reciever;
             //TODO this whole thing
         });
         let channel = Channel::new(ox_reciever, ex_sender, format!("Explorer {}", self.id));
@@ -188,7 +189,7 @@ impl ExplorerHandle<Unborn> {
                 LogChannel::Info,
                 Payload::from([
                     ("Message".into(), "Initialized".into()),
-                    ("Planet".into(), format!("{planet_id:}")),
+                    ("Planet".into(), format!("{:}", planet_handle.id)),
                 ]),
             )
             .emit();
@@ -198,8 +199,9 @@ impl ExplorerHandle<Unborn> {
                 state: Born {
                     channel,
                     handle: handle,
-                    location: Placed {
-                        planet_id,
+                    planet_sender,
+                    location: Placed::<'a, Running> {
+                        planet: planet_handle,
                         run_state: Running,
                     },
                 },
@@ -210,51 +212,134 @@ impl ExplorerHandle<Unborn> {
     }
 }
 
-impl<Any> ExplorerHandle<Born<Placed<Any>>> {
+pub enum MoveResult {
+    Moved,
+    SourcePlanetRefused,
+    DestPlanetRefused,
+}
+
+pub enum MoveResultPlanetError {
+    SourcePlanetFailed,
+    DestPlanetFailed,
+    BothPlanetsFailed,
+}
+
+pub enum MoveResultError {
+    Planet(MoveResultPlanetError),
+    ExplorerFailed,
+}
+
+impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
     fn move_to_planet_intnl(
         &mut self,
-        sender: Option<crossbeam_channel::Sender<planet_explorer::ExplorerToPlanet>>,
-        planet_id: ID,
-    ) -> Result<(), ()> {
-        let result = self
-            .state
-            .channel
-            .send(OrchestratorToExplorer::MoveToPlanet {
-                sender_to_new_planet: sender,
-                planet_id,
-            });
-        if result.is_err() {
-            return Err(());
+        maybe_dest_planet: Option<&'a PlanetHandle>,
+    ) -> Result<MoveResult, MoveResultError> {
+        let mut current_planet = &self.state.location.planet;
+
+        //If we are actually about to move, we need to check out of the previous planet and check in with the new planet.
+        let check_in_out_result = maybe_dest_planet.map(
+            |dest_planet| -> (
+                &PlanetHandle,
+                Result<Result<(), MoveResult>, MoveResultPlanetError>,
+            ) {
+                let result = match dest_planet.incoming_explorer_request(
+                    self.id,
+                    self.state.planet_sender.clone(),
+                ) {
+                    //Request completed successfully and was accpeted
+                    Ok(Ok(())) => {
+                        match current_planet.outgoing_explorer_request(self.id) {
+                            //Request completed successfully and was accpeted
+                            Ok(Ok(())) => Ok(Ok(())),
+                            //Request did not go through fully. We must revert the request for the explorer to move
+                            res => match dest_planet.outgoing_explorer_request(self.id) {
+                                Ok(Ok(v)) => Ok(Err(MoveResult::SourcePlanetRefused)),
+                                Err(_) | Ok(Err(_)) => {
+                                    if res.is_err() {
+                                        Err(MoveResultPlanetError::BothPlanetsFailed)
+                                    } else {
+                                        Err(MoveResultPlanetError::DestPlanetFailed)
+                                    }
+                                }
+                            },
+                        }
+                    }
+                    //Request completed successfully, but was refued.
+                    Ok(Err(_)) => Ok(Err(MoveResult::DestPlanetRefused)),
+                    //Request failed
+                    Err(()) => Err(MoveResultPlanetError::DestPlanetFailed),
+                };
+                (dest_planet, result)
+            },
+        );
+
+        let move_result = self.state.channel.send(match check_in_out_result {
+            //If we are moving and if the check in/out went out correctly.
+            Some((planet, Ok(Ok(())))) => OrchestratorToExplorer::MoveToPlanet {
+                sender_to_new_planet: Some(planet.tx_explorer.clone()),
+                planet_id: planet.id,
+            },
+            //Othrewiese
+            _ => OrchestratorToExplorer::MoveToPlanet {
+                sender_to_new_planet: None,
+                planet_id: self.id as ID,
+            },
+        });
+
+        if move_result.is_err() {
+            return Err(MoveResultError::ExplorerFailed);
         }
 
+        //Check the response's validity
         match self.state.channel.recv() {
             Ok(val) => match val {
                 ExplorerToOrchestrator::MovedToPlanetResult {
                     explorer_id,
                     planet_id: planet_id_resp,
                 } => {
-                    self.ensure_id_matches(explorer_id)?;
+                    self.ensure_id_matches(explorer_id)
+                        .map_err(|_| MoveResultError::ExplorerFailed)?;
 
-                    let old_planet_id = self.state.location.planet_id;
-                    self.state.location.planet_id = planet_id;
+                    let expected_planet = maybe_dest_planet.unwrap_or(self.state.location.planet);
 
-                    //Check if the returned planet actually matches what is expected, if not the change is reverted and Err(()) is returned
-                    self.ensure_planet_matches(
-                        planet_id_resp,
-                        "Explorer returned unexpected planet_id after move",
-                    )
-                    .map_err(|_| self.state.location.planet_id = old_planet_id)?;
+                    if expected_planet.id != planet_id_resp {
+                        self.make_inbound_msg_log_event(
+                            LogChannel::Error,
+                            Payload::from([
+                                (
+                                    "Message".into(),
+                                    "Explorer returned unexpected planet_id after move".into(),
+                                ),
+                                ("Expected".into(), format!("{}", expected_planet.id)),
+                                ("Got".into(), format!("{planet_id_resp}")),
+                            ]),
+                        )
+                        .emit();
+
+                        return Err(MoveResultError::ExplorerFailed);
+                    }
+
+                    self.state.location.planet = expected_planet;
 
                     self.make_internal_log_event(
                         LogChannel::Error,
                         Payload::from([
                             ("Message".into(), "Explorer moved to planet".into()),
-                            ("Planet".into(), format!("{planet_id:}")),
+                            (
+                                "Planet".into(),
+                                format!("{:}", self.state.location.planet.id),
+                            ),
                         ]),
                     )
                     .emit();
-                    self.state.location.planet_id = planet_id;
-                    Ok(())
+
+                    // Map the errors properly before returning
+                    match check_in_out_result {
+                        Some((_, Ok(Ok(())))) => Ok(MoveResult::Moved),
+                        Some((_, Ok(Err(res)))) => Ok(res),
+                        Some((_, Err(res))) => Err(MoveResultError::Planet(res)),
+                        None => Ok(MoveResult::Moved),
+                    }
                 }
                 _ => {
                     let expected = ExplorerToOrchestratorKind::MovedToPlanetResult;
@@ -267,15 +352,15 @@ impl<Any> ExplorerHandle<Born<Placed<Any>>> {
                         ]),
                     )
                     .emit();
-                    Err(())
+                    Err(MoveResultError::ExplorerFailed)
                 }
             },
-            Err(_) => Err(()),
+            Err(_) => Err(MoveResultError::ExplorerFailed),
         }
     }
 
     fn ensure_planet_matches(&self, planet_id: ID, err_message: &str) -> Result<(), ()> {
-        if planet_id != self.state.location.planet_id as ID {
+        if planet_id != self.state.location.planet.id as ID {
             self.make_inbound_msg_log_event(
                 LogChannel::Error,
                 Payload::from([
@@ -292,8 +377,8 @@ impl<Any> ExplorerHandle<Born<Placed<Any>>> {
     }
 }
 
-impl ExplorerHandle<Born<Placed<Paused>>> {
-    pub fn unpause_explorer_ai(self) -> Result<ExplorerHandle<Born<Placed<Running>>>, ()> {
+impl<'a> ExplorerHandle<Born<Placed<'a, Paused>>> {
+    pub fn unpause_explorer_ai(self) -> Result<ExplorerHandle<Born<Placed<'a, Running>>>, ()> {
         if let Ok(_) = self.state.channel.send_and_check_ack(
             OrchestratorToExplorer::StartExplorerAI,
             ExplorerToOrchestratorKind::StartExplorerAIResult,
@@ -309,8 +394,9 @@ impl ExplorerHandle<Born<Placed<Paused>>> {
                 state: Born {
                     channel: self.state.channel,
                     handle: self.state.handle,
+                    planet_sender: self.state.planet_sender,
                     location: Placed {
-                        planet_id: self.state.location.planet_id,
+                        planet: self.state.location.planet,
                         run_state: Running,
                     },
                 },
@@ -322,17 +408,16 @@ impl ExplorerHandle<Born<Placed<Paused>>> {
 
     pub fn move_to_planet(
         &mut self,
-        sender: Option<crossbeam_channel::Sender<planet_explorer::ExplorerToPlanet>>,
-        planet_id: ID,
-    ) -> Result<(), ()> {
-        self.move_to_planet_intnl(sender, planet_id)
+        planet: &'a PlanetHandle,
+    ) -> Result<MoveResult, MoveResultError> {
+        self.move_to_planet_intnl(Some(planet))
     }
 
     //TODO all other manual mode funcs
 }
 
-impl ExplorerHandle<Born<Placed<Running>>> {
-    pub fn pause_explorer_ai(self) -> Result<ExplorerHandle<Born<Placed<Paused>>>, ()> {
+impl<'a> ExplorerHandle<Born<Placed<'a, Running>>> {
+    pub fn pause_explorer_ai(self) -> Result<ExplorerHandle<Born<Placed<'a, Paused>>>, ()> {
         if let Ok(_) = self.state.channel.send_and_check_ack(
             OrchestratorToExplorer::StopExplorerAI,
             ExplorerToOrchestratorKind::StopExplorerAIResult,
@@ -348,8 +433,9 @@ impl ExplorerHandle<Born<Placed<Running>>> {
                 state: Born {
                     channel: self.state.channel,
                     handle: self.state.handle,
+                    planet_sender: self.state.planet_sender,
                     location: Placed {
-                        planet_id: self.state.location.planet_id,
+                        planet: self.state.location.planet,
                         run_state: Paused,
                     },
                 },
@@ -365,7 +451,11 @@ impl ExplorerHandle<Born<Placed<Running>>> {
     /// - Ok(true) if a reqeust was handled
     /// - Ok(false) if a request was not handled
     /// - Err(()) when an internal error occurs
-    pub fn handle_one_request(&mut self, galaxy: &Galaxy) -> Result<bool, ()> {
+    pub fn handle_one_request(
+        &mut self,
+        galaxy: &Galaxy,
+        planet_handles: &'a HashMap<ID, PlanetHandle>,
+    ) -> Result<bool, ()> {
         let result = match self.state.channel.poll() {
             //There was an error while polling
             Err(_) => Err(()),
@@ -381,12 +471,15 @@ impl ExplorerHandle<Born<Placed<Running>>> {
                     explorer_id: recvd_explorer_id,
                     current_planet_id,
                     dst_planet_id,
-                } => self.handle_travel_to_planet_request(
-                    galaxy,
-                    recvd_explorer_id,
-                    current_planet_id,
-                    dst_planet_id,
-                ),
+                } => self
+                    .handle_travel_to_planet_request(
+                        galaxy,
+                        recvd_explorer_id,
+                        current_planet_id,
+                        planet_handles.get(&dst_planet_id),
+                    )
+                    .map(|_| {})
+                    .map_err(|_| {}),
                 _ => {
                     self.make_inbound_msg_log_event(
                         LogChannel::Error,
@@ -464,8 +557,8 @@ impl ExplorerHandle<Born<Placed<Running>>> {
         galaxy: &Galaxy,
         recv_explorer_id: ID,
         current_planet_id: ID,
-        dst_planet_id: ID,
-    ) -> Result<(), ()> {
+        dest_planet: Option<&'a PlanetHandle>,
+    ) -> Result<MoveResult, MoveResultError> {
         let assertions_result = self
             .ensure_planet_matches(
                 current_planet_id,
@@ -473,12 +566,12 @@ impl ExplorerHandle<Born<Placed<Running>>> {
             )
             .and(self.ensure_id_matches(recv_explorer_id));
 
-        let maybe_explorer_to_planet = if assertions_result.is_err() {
+        let maybe_neighbor = if assertions_result.is_err() {
             None
         } else {
             galaxy
                 .planets
-                .get(&current_planet_id)
+                .get(&self.state.location.planet.id)
                 .map(|current_planet| {
                     current_planet
                         .lock()
@@ -486,21 +579,27 @@ impl ExplorerHandle<Born<Placed<Running>>> {
                         .adj
                         .iter()
                         .find_map(|neighbor| {
-                            let neighbor =
-                                neighbor.lock().expect("Planet thread must not be poisoned");
-                            (neighbor.id() == dst_planet_id).then(|| neighbor.tx_explorer.clone())
+                            let neighbor = neighbor;
+                            (neighbor
+                                .lock()
+                                .expect("Planet thread must not be poisoned")
+                                .id()
+                                == dest_planet.unwrap_or(self.state.location.planet).id)
+                                .then(|| neighbor.clone())
                         })
                 })
                 .flatten()
         };
 
-        match maybe_explorer_to_planet {
-            //Success
-            Some(tx_explorer) => self.move_to_planet_intnl(Some(tx_explorer), dst_planet_id),
-            //Failure (Planet may have been killed before Explorer had a chance to react. Do not move)
-            None => self.move_to_planet_intnl(None, self.state.location.planet_id),
+        match assertions_result {
+            Ok(_) => match maybe_neighbor {
+                //Success
+                Some(_) => self.move_to_planet_intnl(dest_planet),
+                //Failure (Planet may have been killed before Explorer had a chance to react. Do not move)
+                None => self.move_to_planet_intnl(None),
+            },
+            Err(_) => Err(MoveResultError::ExplorerFailed),
         }
-        .and(assertions_result)
     }
 }
 

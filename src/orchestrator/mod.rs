@@ -17,10 +17,12 @@ use common_game::{
     utils::ID,
 };
 use explorer_common::Bag;
+use luna4::planet::PlanetToExplorer;
 use orchestrator_explorer::{
     ExplorerToOrchestrator, ExplorerToOrchestratorKind, OrchestratorToExplorer,
 };
 use orchestrator_planet::{OrchestratorToPlanet, PlanetToOrchestrator};
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::sync::atomic::Ordering::{Relaxed, Release};
 use std::sync::atomic::{AtomicBool, AtomicU32};
@@ -196,7 +198,7 @@ impl Orchestrator {
                     command
                 } else {
                     if let Err(explorer_index) =
-                        self.poll_and_handle_first_req(&mut running_explorer_handles)
+                        self.poll_and_handle_first_req(&running_explorer_handles, &planet_handles)
                     {
                         //An error occured while handling an explorer's request.
                         //In this case we chose to kill the explorer and continue execution with a single explorer
@@ -204,7 +206,7 @@ impl Orchestrator {
                         let explorer = running_explorer_handles
                             .remove(&explorer_index)
                             .expect("Explorer got removed");
-                        match explorer.kill_explorer_ai() {
+                        match explorer.into_inner().kill_explorer_ai() {
                             Ok(join_handle) => {
                                 join_handle.join();
                             }
@@ -245,10 +247,7 @@ impl Orchestrator {
                             RichardRandomType => Box::new(RichardRandom),
                         },
                         self.ai_queue.clone(),
-                        AiArgs::RichardRandom(
-                            0,
-                            (self.galaxy.planets.len() - 1) as ID
-                        )
+                        AiArgs::RichardRandom(0, (self.galaxy.planets.len() - 1) as ID),
                     );
                     ai_handles.insert(new_ai.id, new_ai);
                 }
@@ -298,12 +297,13 @@ impl Orchestrator {
     }
 
     ///Poll explorers and handle first found request. Reutnrs `Err(explorer_index)` if there is an error while handling an explorer's request
-    fn poll_and_handle_first_req(
+    fn poll_and_handle_first_req<'a,'b>(
         &mut self,
-        explorers: &mut HashMap<ExplorerID, RunningExploererHandle>,
+        explorers: &'b HashMap<ExplorerID, RefCell<RunningExploererHandle<'a>>>,
+        planet_handles: &'a HashMap<ID, PlanetHandle>,
     ) -> Result<(), ExplorerID> {
-        for (explorer_index, explorer) in explorers.iter_mut() {
-            let result = explorer.handle_one_request(&self.galaxy);
+        for (explorer_index, explorer) in explorers.iter() {
+            let result = explorer.borrow_mut().handle_one_request(&self.galaxy, planet_handles);
             match result {
                 Ok(true) => return Ok(()),
                 Ok(false) => continue,
@@ -331,7 +331,7 @@ impl PlanetHandle {
             handle: thread::spawn(move || planet.lock().unwrap().run()),
             tx_planet,
             rx_planet,
-            tx_explorer,
+            tx_explorer
         }
     }
     fn start_planet(&self) {
@@ -534,6 +534,79 @@ impl PlanetHandle {
             }
         }
     }
+
+    fn incoming_explorer_request(
+        &self,
+        explorer_id: ExplorerID,
+        new_sender: crossbeam_channel::Sender<PlanetToExplorer>,
+    ) -> Result<Result<(), String>, ()> {
+        let send_result = self
+            .tx_planet
+            .send(OrchestratorToPlanet::IncomingExplorerRequest {
+                explorer_id: explorer_id as ID,
+                new_sender,
+            });
+        match send_result {
+            Ok(()) => log::info!(
+                "IncomingExplorerRequest message sent to planet {} for explorer {}",
+                self.id,
+                explorer_id
+            ),
+            Err(_) => {
+                log::error!(
+                    "Could not send IncomingExplorerRequest message to planet {}",
+                    self.id
+                );
+                return Err(());
+            }
+        };
+
+        match self.rx_planet.recv() {
+            Ok(message) => {
+                if let PlanetToOrchestrator::IncomingExplorerResponse {
+                    planet_id: _,
+                    explorer_id: _,
+                    res,
+                } = message
+                {
+                    match res {
+                        Ok(()) => {
+                            log::info!(
+                                "Successfully received IncomingExplorerResponse from planet {}",
+                                self.id
+                            );
+                            Ok(Ok(()))
+                        }
+                        Err(errmsg) => {
+                            log::info!(
+                                "Planet {} rejected explorer {} with message {}",
+                                self.id,
+                                explorer_id,
+                                errmsg
+                            );
+                            Ok(Err(errmsg))
+                        }
+                    }
+                } else {
+                    log::error!(
+                        "Expected IncomingExplorerResponse, received {:?}, while sending IncomingExplorerRequest to planet {}",
+                        message,
+                        self.id
+                    );
+                    Err(())
+                }
+            }
+            Err(error) => {
+                log::error!(
+                    "Error while waiting for IncomingExplorerResponse message from planet {}, error: {}",
+                    self.id,
+                    error
+                );
+                Err(())
+            }
+        }
+    }
+
     fn join_thread(self) {
         match self.handle.join() {
             Ok(planet_result) => match planet_result {
@@ -541,6 +614,73 @@ impl PlanetHandle {
                 Err(error) => log::error!("Error when joining planet {}: {}", self.id, error),
             },
             Err(_) => log::error!("Could not join thread of planet {}", self.id),
+        }
+    }
+
+    fn outgoing_explorer_request(&self, explorer_id: ExplorerID) -> Result<Result<(), String>, ()> {
+        let send_result = self
+            .tx_planet
+            .send(OrchestratorToPlanet::OutgoingExplorerRequest {
+                explorer_id: explorer_id as ID,
+            });
+        match send_result {
+            Ok(()) => log::info!(
+                "OutgoingExplorerRequest message sent to planet {} for explorer {}",
+                self.id,
+                explorer_id
+            ),
+            Err(_) => {
+                log::error!(
+                    "Could not send OutgoingExplorerRequest message to planet {}",
+                    self.id
+                );
+                return Err(());
+            }
+        };
+
+        match self.rx_planet.recv() {
+            Ok(message) => {
+                if let PlanetToOrchestrator::OutgoingExplorerResponse {
+                    planet_id: _,
+                    explorer_id: _,
+                    res,
+                } = message
+                {
+                    match res {
+                        Ok(()) => {
+                            log::info!(
+                                "Successfully received OutgoingExplorerResponse from planet {}",
+                                self.id
+                            );
+                            Ok(Ok(()))
+                        }
+                        Err(errmsg) => {
+                            log::info!(
+                                "Planet {} did not allow explorer to move out {} with message {}",
+                                self.id,
+                                explorer_id,
+                                errmsg
+                            );
+                            Ok(Err(errmsg))
+                        }
+                    }
+                } else {
+                    log::error!(
+                        "Expected OutgoingExplorerResponse, received {:?}, while sending IncomingExplorerRequest to planet {}",
+                        message,
+                        self.id
+                    );
+                    Err(())
+                }
+            }
+            Err(error) => {
+                log::error!(
+                    "Error while waiting for OutgoingExplorerResponse message from planet {}, error: {}",
+                    self.id,
+                    error
+                );
+                Err(())
+            }
         }
     }
 }
