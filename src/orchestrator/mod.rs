@@ -4,7 +4,7 @@ mod shell;
 use crate::galaxy_generator::{Galaxy, PlanetContainer};
 use crate::orchestrator::Command::*;
 use crate::orchestrator::ai::AiType::RichardRandom as RichardRandomType;
-use crate::orchestrator::ai::{Ai, AiType, RichardRandom};
+use crate::orchestrator::ai::{Ai, AiArgs, AiType, RichardRandom};
 use crate::orchestrator::explorer_handle::{RunningExploererHandle, UnbornExploererHandle};
 use crate::orchestrator::shell::Shell;
 use common_game::components::asteroid::Asteroid;
@@ -47,13 +47,13 @@ pub struct AiHandle {
                                // We could potentially add corssbeam channels to communicate with the AI if we ever wanted
 }
 impl AiHandle {
-    fn new(ai: Box<dyn Ai>, queue: Arc<Mutex<VecDeque<Command>>>, first: ID, last: ID) -> Self {
+    fn new(ai: Box<dyn Ai>, queue: Arc<Mutex<VecDeque<Command>>>, args: AiArgs) -> Self {
         static NEXT_ID: AtomicU32 = AtomicU32::new(0);
         let run_flag = Arc::new(AtomicBool::new(true));
         let closure_flag = run_flag.clone();
         Self {
             id: NEXT_ID.load(Relaxed),
-            handle: { thread::spawn(move || ai.run(queue, closure_flag, first, last)) },
+            handle: { thread::spawn(move || ai.run(queue, closure_flag, args)) },
             run_flag: run_flag,
         }
     }
@@ -245,8 +245,10 @@ impl Orchestrator {
                             RichardRandomType => Box::new(RichardRandom),
                         },
                         self.ai_queue.clone(),
-                        0,
-                        (self.galaxy.planets.len() - 1) as ID,
+                        AiArgs::RichardRandom(
+                            0,
+                            (self.galaxy.planets.len() - 1) as ID
+                        )
                     );
                     ai_handles.insert(new_ai.id, new_ai);
                 }
