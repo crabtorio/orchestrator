@@ -1,0 +1,1 @@
+Code copied and modified from ImmutableCosmicBorrow's original orchestrator, to allow comunication and compatibility between what the GUI expects and what we have (our own orchestrator)

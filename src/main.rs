@@ -9,6 +9,9 @@ mod galaxy_generator;
 mod logging;
 mod orchestrator;
 
+mod compat;
+mod gui;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     init();
     let cli = Cli::parse();
