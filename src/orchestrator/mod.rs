@@ -179,7 +179,7 @@ impl Orchestrator {
                 ),
                 (
                     ExplorerID::Second,
-                    explorer_handle::new(ExplorerID::Second, *explorer_vendor1),
+                    explorer_handle::new(ExplorerID::Second, *explorer_vendor2),
                 ),
             ]),
         };
