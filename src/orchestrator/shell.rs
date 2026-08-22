@@ -56,11 +56,11 @@ fn parse_command(mut input: String) -> Result<Command, String> {
     let arguments = &parts[1..];
 
     match command {
-        "startexplorers" => Ok(StartExplorers),
-        "stopexplorers" => Ok(StopExplorers),
+        "startexplorers" => Ok(ResumeExplorers),
+        "stopexplorers" => Ok(PauseExplorers),
         "killexplorers" => Ok(KillExplorers),
         "resetexplorers" => Ok(ResetExplorers),
-        "startexplorer" => Ok(StartExplorer({
+        "startexplorer" => Ok(ResumeExplorer({
             if arguments[0] == "0" {
                 super::ExplorerID::First
             } else {

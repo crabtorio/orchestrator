@@ -5,7 +5,10 @@ use crate::galaxy_generator::{Galaxy, PlanetContainer};
 use crate::orchestrator::Command::*;
 use crate::orchestrator::ai::AiType::RichardRandom as RichardRandomType;
 use crate::orchestrator::ai::{Ai, AiArgs, AiType, RichardRandom};
-use crate::orchestrator::explorer_handle::{RunningExploererHandle, UnbornExploererHandle};
+use crate::orchestrator::explorer_handle::{
+    ExplorerSet, GenericExplorer, MoveResult, MoveResultError, PausedExploererHandle,
+    RunningExploererHandle, UnbornExplorerHandle,
+};
 use crate::orchestrator::shell::Shell;
 use common_game::components::asteroid::Asteroid;
 use common_game::components::planet::DummyPlanetState;
@@ -33,7 +36,7 @@ use std::{
     sync::{Arc, Mutex},
     thread::{self, JoinHandle},
 };
-use std::{todo, vec};
+use std::{print, println, todo, vec};
 pub mod ai;
 
 pub struct Orchestrator {
@@ -97,10 +100,12 @@ impl std::fmt::Display for ExplorerID {
 pub enum Command {
     // Explorer
     StartExplorers,
-    StopExplorers,
+    ResumeExplorers,
+    PauseExplorers,
     KillExplorers,
     ResetExplorers,
     StartExplorer(ExplorerID),
+    ResumeExplorer(ExplorerID),
     StopExplorer(ExplorerID),
     KillExplorer(ExplorerID),
     ResetExplorer(ExplorerID),
@@ -164,25 +169,29 @@ impl Orchestrator {
         let shell = Shell::new(self.user_queue.clone());
         let shell_handle = thread::spawn(move || shell.run());
 
-        let mut running_explorer_handles = HashMap::new();
-
         //Add the unborn explorer handles to the appropriate map
-        let mut unborn_explorer_handles = match &self.explorers {
+        let mut explorer_handles = ExplorerSet(match &self.explorers {
             Explorers::One(explorer_vendor) => HashMap::from([(
                 ExplorerID::First,
-                explorer_handle::new(ExplorerID::First, *explorer_vendor),
+                GenericExplorer::Unborn(explorer_handle::new(ExplorerID::First, *explorer_vendor)),
             )]),
             Explorers::Two(explorer_vendor1, explorer_vendor2) => HashMap::from([
                 (
                     ExplorerID::First,
-                    explorer_handle::new(ExplorerID::First, *explorer_vendor1),
+                    GenericExplorer::Unborn(explorer_handle::new(
+                        ExplorerID::First,
+                        *explorer_vendor1,
+                    )),
                 ),
                 (
                     ExplorerID::Second,
-                    explorer_handle::new(ExplorerID::Second, *explorer_vendor2),
+                    GenericExplorer::Unborn(explorer_handle::new(
+                        ExplorerID::Second,
+                        *explorer_vendor2,
+                    )),
                 ),
             ]),
-        };
+        });
 
         loop {
             sleep(Duration::from_millis(50));
@@ -197,27 +206,70 @@ impl Orchestrator {
                 if let Some(command) = command {
                     command
                 } else {
-                    if let Err(explorer_index) =
-                        self.poll_and_handle_first_req(&running_explorer_handles, &planet_handles)
-                    {
-                        //An error occured while handling an explorer's request.
-                        //In this case we chose to kill the explorer and continue execution with a single explorer
-                        log::info!("Attempting to kill explorer due to previous error");
-                        let explorer = running_explorer_handles
-                            .remove(&explorer_index)
-                            .expect("Explorer got removed");
-                        match explorer.into_inner().kill_explorer_ai() {
-                            Ok(join_handle) => {
-                                join_handle.join();
+                    explorer_handles.bulk_running_op(|_key, mut explorer| {
+                        match explorer.handle_one_request(&self.galaxy, &planet_handles) {
+                            Ok(_) => Some(GenericExplorer::Running(explorer)),
+                            Err(()) => {
+                                //An error occured while handling an explorer's request.
+                                //In this case we chose to kill the explorer and continue execution with a single explorer
+                                log::info!("Attempting to kill explorer due to previous error");
+                                match explorer.kill() {
+                                    Ok(join_handle) => {
+                                        join_handle.join();
+                                    }
+                                    Err(_) => log::error!(
+                                        "Could not shut down explorer cleanly, continuing anyway"
+                                    ),
+                                }
+                                None
                             }
-                            Err(_) => log::error!(
-                                "Could not shut down explorer cleanly, continuing anyway"
-                            ),
                         }
-                    }
+                    });
                     continue;
                 }
             };
+
+            //Helper functions
+            fn kill_generic_explorer(id: ExplorerID, explorer: GenericExplorer) {
+                let join_handle = match explorer {
+                    //Unborn explorers just get deleted
+                    GenericExplorer::Unborn(_explorer_handle) => return,
+                    //The otheres must go through the kill procedure
+                    GenericExplorer::Unplaced(explorer_handle) => explorer_handle.kill(),
+                    GenericExplorer::Running(explorer_handle) => explorer_handle.kill(),
+                    GenericExplorer::Stopped(explorer_handle) => explorer_handle.kill(),
+                };
+                //Join the threads
+                match join_handle {
+                    Ok(handle) => {
+                        handle.join();
+                    }
+                    Err(_) => println!("An error occured while killing explorer {id}"),
+                };
+            }
+
+            fn reset_generic_explorer(
+                id: ExplorerID,
+                explorer: GenericExplorer,
+            ) -> Option<GenericExplorer> {
+                let reset_result = match explorer {
+                    //Unborn explorers cannot be reset.
+                    GenericExplorer::Unborn(explorer_handle) => {
+                        return Some(GenericExplorer::Unborn(explorer_handle));
+                    }
+                    //All the others can
+                    GenericExplorer::Unplaced(explorer_handle) => explorer_handle.reset(),
+                    GenericExplorer::Running(explorer_handle) => explorer_handle.reset(),
+                    GenericExplorer::Stopped(explorer_handle) => explorer_handle.reset(),
+                };
+                match reset_result {
+                    Ok(new_handle) => Some(GenericExplorer::Unplaced(new_handle)),
+                    Err(_) => {
+                        println!("An error occured while resetting explorer {id}");
+                        None
+                    }
+                }
+            }
 
             match next_command {
                 Exit => break,
@@ -259,17 +311,179 @@ impl Orchestrator {
                     }
                 }
                 StartExplorers => todo!(),
-                StopExplorers => todo!(),
-                KillExplorers => todo!(),
-                ResetExplorers => todo!(),
-                StartExplorer(explorer_id) => todo!(),
-                StopExplorer(explorer_id) => todo!(),
-                KillExplorer(explorer_id) => todo!(),
-                ResetExplorer(explorer_id) => todo!(),
+                ResumeExplorers => {
+                    explorer_handles.bulk_paused_op(|key, explorer| match explorer.resume() {
+                        Ok(explorer) => Some(GenericExplorer::Running(explorer)),
+                        Err(_) => {
+                            println!("An error occured while unpausing explorer {key}");
+                            None
+                        }
+                    });
+                }
+                PauseExplorers => {
+                    explorer_handles.bulk_running_op(|key, explorer| match explorer.stop() {
+                        Ok(explorer) => Some(GenericExplorer::Stopped(explorer)),
+                        Err(_) => {
+                            println!("An error occured while pausing explorer {key}");
+                            None
+                        }
+                    })
+                }
+                KillExplorers => explorer_handles.bulk_op(|id, explorer| {
+                    kill_generic_explorer(id, explorer);
+                    None
+                }),
+                ResetExplorers => {
+                    explorer_handles.bulk_op(|id, explorer| reset_generic_explorer(id, explorer))
+                }
+                StartExplorer(explorer_id) => {
+                    explorer_handles.take_explorer(explorer_id, |maybe_explorer| {
+                        match maybe_explorer {
+                            Some(GenericExplorer::Unborn(explorer_handle)) => {
+                                match explorer_handle.init() {
+                                    Ok(explorer_handle) => {
+                                        Some(GenericExplorer::Unplaced(explorer_handle))
+                                    }
+                                    Err(_) => {
+                                        println!("Internal error while initializing the explorer");
+                                        None
+                                    }
+                                }
+                            }
+                            Some(_) => {
+                                println!("This explorer has already been initialized");
+                                None
+                            }
+                            None => {
+                                println!("Explorer not found");
+                                None
+                            }
+                        }
+                    })
+                }
+                ResumeExplorer(explorer_id) => {
+                    explorer_handles.take_explorer(explorer_id, |maybe_explorer| {
+                        match maybe_explorer {
+                            Some(GenericExplorer::Stopped(explorer_handle)) => {
+                                match explorer_handle.resume() {
+                                    Ok(explorer_handle) => {
+                                        Some(GenericExplorer::Running(explorer_handle))
+                                    }
+                                    Err(_) => {
+                                        println!("Internal error while resuming explorer");
+                                        None
+                                    }
+                                }
+                            }
+                            Some(GenericExplorer::Running(_)) => {
+                                println!("The explorer is already running");
+                                None
+                            }
+                            Some(_) => {
+                                println!("The explorer can not be resumed");
+                                None
+                            }
+                            None => {
+                                println!("Explorer not found");
+                                None
+                            }
+                        }
+                    })
+                }
+                StopExplorer(explorer_id) => {
+                    explorer_handles.take_explorer(explorer_id, |maybe_explorer| {
+                        match maybe_explorer {
+                            Some(GenericExplorer::Running(explorer_handle)) => {
+                                match explorer_handle.stop() {
+                                    Ok(explorer_handle) => {
+                                        Some(GenericExplorer::Stopped(explorer_handle))
+                                    }
+                                    Err(_) => {
+                                        println!("Internal error while stopping explorer");
+                                        None
+                                    }
+                                }
+                            }
+                            Some(GenericExplorer::Stopped(_)) => {
+                                println!("This explorer is already stopped");
+                                None
+                            }
+                            Some(_) => {
+                                println!("This explorer has already been initialized");
+                                None
+                            }
+                            None => {
+                                println!("Explorer not found");
+                                None
+                            }
+                        }
+                    })
+                }
+                KillExplorer(explorer_id) => {
+                    explorer_handles.take_explorer(explorer_id, |maybe_explorer| {
+                        match maybe_explorer {
+                            Some(explorer) => kill_generic_explorer(explorer_id, explorer),
+                            None => println!("Explorer not found"),
+                        }
+                        None
+                    })
+                }
+                ResetExplorer(explorer_id) => {
+                    explorer_handles.take_explorer(explorer_id, |maybe_explorer| {
+                        match maybe_explorer {
+                            Some(explorer) => reset_generic_explorer(explorer_id, explorer),
+                            None => {
+                                println!("Explorer not found");
+                                None
+                            }
+                        }
+                    })
+                }
                 MoveExplorer {
                     planet_id,
                     explorer,
-                } => todo!(),
+                } => {
+                    let explorer = match explorer_handles.get_mut(explorer) {
+                        Some(GenericExplorer::Stopped(explorer_handle)) => explorer_handle,
+                        Some(_) => {
+                            println!("Can only manually move stopped planets");
+                            return;
+                        }
+                        None => {
+                            println!("Explorer not found");
+                            return;
+                        }
+                    };
+
+                    let planet_handle = if let Some(planet_handle) = planet_handles.get(&planet_id)
+                    {
+                        planet_handle
+                    } else {
+                        println!("Planet not found");
+                        return;
+                    };
+
+                    let res = explorer.move_to_planet(planet_handle);
+                    match res {
+                        Err(err) => match err {
+                            MoveResultError::Planet(_) => {
+                                println!("One or more planets encountered an error during the move")
+                            }
+                            MoveResultError::ExplorerFailed => {
+                                println!("Explorer encountered an error while moving")
+                            }
+                        },
+                        Ok(res) => match res {
+                            MoveResult::Moved => (),
+                            MoveResult::SourcePlanetRefused => {
+                                println!("Source planet refused to allow move")
+                            }
+                            MoveResult::DestPlanetRefused => {
+                                println!("Destination planet refused to allow move")
+                            }
+                        },
+                    }
+                }
                 CurrentPlanetRequest(explorer_id) => todo!(),
                 SupportedResourceRequest(explorer_id) => todo!(),
                 SupportedCombinationRequest(explorer_id) => todo!(),
@@ -297,13 +511,15 @@ impl Orchestrator {
     }
 
     ///Poll explorers and handle first found request. Reutnrs `Err(explorer_index)` if there is an error while handling an explorer's request
-    fn poll_and_handle_first_req<'a,'b>(
+    fn poll_and_handle_first_req<'a, 'b>(
         &mut self,
         explorers: &'b HashMap<ExplorerID, RefCell<RunningExploererHandle<'a>>>,
         planet_handles: &'a HashMap<ID, PlanetHandle>,
     ) -> Result<(), ExplorerID> {
         for (explorer_index, explorer) in explorers.iter() {
-            let result = explorer.borrow_mut().handle_one_request(&self.galaxy, planet_handles);
+            let result = explorer
+                .borrow_mut()
+                .handle_one_request(&self.galaxy, planet_handles);
             match result {
                 Ok(true) => return Ok(()),
                 Ok(false) => continue,
@@ -331,7 +547,7 @@ impl PlanetHandle {
             handle: thread::spawn(move || planet.lock().unwrap().run()),
             tx_planet,
             rx_planet,
-            tx_explorer
+            tx_explorer,
         }
     }
     fn start_planet(&self) {

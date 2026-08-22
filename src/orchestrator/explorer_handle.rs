@@ -22,9 +22,6 @@ use explorer_common::Bag;
 use luna4::planet::PlanetToExplorer;
 
 pub type Channel = LoggedChannel<OrchestratorToExplorer, ExplorerToOrchestrator<Bag>>;
-pub type UnbornExploererHandle = ExplorerHandle<Unborn>;
-pub type PausedExploererHandle<'a> = ExplorerHandle<Born<Placed<'a, Paused>>>;
-pub type RunningExploererHandle<'a> = ExplorerHandle<Born<Placed<'a, Running>>>;
 
 pub struct ExplorerHandle<State> {
     id: ExplorerID,
@@ -45,6 +42,116 @@ pub struct Placed<'a, Substate> {
 }
 pub struct Paused;
 pub struct Running;
+
+pub type UnbornExplorerHandle = ExplorerHandle<Unborn>;
+pub type UnplacedExplorerHandle = ExplorerHandle<Born<Unplaced>>;
+pub type PausedExploererHandle<'a> = ExplorerHandle<Born<Placed<'a, Paused>>>;
+pub type RunningExploererHandle<'a> = ExplorerHandle<Born<Placed<'a, Running>>>;
+
+pub enum GenericExplorer<'a> {
+    Unborn(UnbornExplorerHandle),
+    Unplaced(UnplacedExplorerHandle),
+    Running(RunningExploererHandle<'a>),
+    Stopped(PausedExploererHandle<'a>),
+}
+
+pub struct ExplorerSet<'a>(pub HashMap<ExplorerID, GenericExplorer<'a>>);
+
+impl<'a> ExplorerSet<'a> {
+    pub fn get(&self, id: ExplorerID) -> Option<&GenericExplorer<'a>> {
+        self.0.get(&id)
+    }
+
+    pub fn get_mut(&mut self, id: ExplorerID) -> Option<&mut GenericExplorer<'a>> {
+        self.0.get_mut(&id)
+    }
+
+    /// Take a value and, if it's present, do something with it.
+    /// If the return value of `op` is None, the explorer is dropped from the set.
+    pub fn take_explorer<F: Fn(Option<GenericExplorer<'a>>) -> Option<GenericExplorer<'a>>>(
+        &mut self,
+        id: ExplorerID,
+        op: F,
+    ) {
+        let res = op(self.0.remove(&id));
+        match res {
+            Some(explorer) => {
+                self.0.insert(id, explorer);
+            }
+            None => {}
+        }
+    }
+
+    pub fn bulk_op<F: Fn(ExplorerID, GenericExplorer<'a>) -> Option<GenericExplorer<'a>>>(
+        &mut self,
+        op: F,
+    ) {
+        self.0 = std::mem::take(&mut self.0)
+            .into_iter()
+            .filter_map(|(key, explorer)| op(key, explorer).map(|explorer| (key, explorer)))
+            .collect();
+    }
+
+    pub fn bulk_unborn_op<
+        F: Fn(ExplorerID, UnbornExplorerHandle) -> Option<GenericExplorer<'a>>,
+    >(
+        &mut self,
+        op: F,
+    ) {
+        self.bulk_op(|key, explorer| {
+            if let GenericExplorer::Unborn(explorer) = explorer {
+                op(key, explorer)
+            } else {
+                Some(explorer)
+            }
+        });
+    }
+
+    pub fn bulk_unplaced_op<
+        F: Fn(ExplorerID, UnplacedExplorerHandle) -> Option<GenericExplorer<'a>>,
+    >(
+        &mut self,
+        op: F,
+    ) {
+        self.bulk_op(|key, explorer| {
+            if let GenericExplorer::Unplaced(explorer) = explorer {
+                op(key, explorer)
+            } else {
+                Some(explorer)
+            }
+        });
+    }
+
+    pub fn bulk_paused_op<
+        F: Fn(ExplorerID, PausedExploererHandle<'a>) -> Option<GenericExplorer<'a>>,
+    >(
+        &mut self,
+        op: F,
+    ) {
+        self.bulk_op(|key, explorer| {
+            if let GenericExplorer::Stopped(explorer) = explorer {
+                op(key, explorer)
+            } else {
+                Some(explorer)
+            }
+        });
+    }
+
+    pub fn bulk_running_op<
+        F: Fn(ExplorerID, RunningExploererHandle<'a>) -> Option<GenericExplorer<'a>>,
+    >(
+        &mut self,
+        op: F,
+    ) {
+        self.bulk_op(|key, explorer| {
+            if let GenericExplorer::Running(explorer) = explorer {
+                op(key, explorer)
+            } else {
+                Some(explorer)
+            }
+        });
+    }
+}
 
 impl<Any> ExplorerHandle<Any> {
     fn make_internal_log_event(&self, channel: LogChannel, payload: Payload) -> LogEvent {
@@ -77,7 +184,7 @@ impl<Any> ExplorerHandle<Any> {
 }
 
 impl<Any> ExplorerHandle<Born<Any>> {
-    pub fn kill_explorer_ai(self) -> Result<JoinHandle<()>, ()> {
+    pub fn kill(self) -> Result<JoinHandle<()>, ()> {
         if let Ok(_) = self.state.channel.send_and_check_ack(
             OrchestratorToExplorer::KillExplorer,
             ExplorerToOrchestratorKind::KillExplorerResult,
@@ -93,7 +200,7 @@ impl<Any> ExplorerHandle<Born<Any>> {
         }
     }
 
-    pub fn reset_explorer_ai(self) -> Result<ExplorerHandle<Born<Unplaced>>, ()> {
+    pub fn reset(self) -> Result<ExplorerHandle<Born<Unplaced>>, ()> {
         if let Ok(_) = self.state.channel.send_and_check_ack(
             OrchestratorToExplorer::ResetExplorerAI,
             ExplorerToOrchestratorKind::ResetExplorerAIResult,
@@ -166,10 +273,7 @@ impl<Any> ExplorerHandle<Born<Any>> {
 }
 
 impl<'a> ExplorerHandle<Unborn> {
-    pub fn init_explorer_ai(
-        self,
-        planet_handle: &'a PlanetHandle,
-    ) -> Result<ExplorerHandle<Born<Placed<'a, Running>>>, ()> {
+    pub fn init(self) -> Result<ExplorerHandle<Born<Unplaced>>, ()> {
         let (ex_sender, ex_reciever) = crossbeam_channel::unbounded();
         let (ox_sender, ox_reciever) = crossbeam_channel::unbounded();
         let (planet_sender, planet_reciever) = crossbeam_channel::unbounded();
@@ -187,10 +291,7 @@ impl<'a> ExplorerHandle<Unborn> {
         ) {
             self.make_internal_log_event(
                 LogChannel::Info,
-                Payload::from([
-                    ("Message".into(), "Initialized".into()),
-                    ("Planet".into(), format!("{:}", planet_handle.id)),
-                ]),
+                Payload::from([("Message".into(), "Initialized".into())]),
             )
             .emit();
             Ok(ExplorerHandle {
@@ -200,10 +301,7 @@ impl<'a> ExplorerHandle<Unborn> {
                     channel,
                     handle: handle,
                     planet_sender,
-                    location: Placed::<'a, Running> {
-                        planet: planet_handle,
-                        run_state: Running,
-                    },
+                    location: Unplaced,
                 },
             })
         } else {
@@ -242,10 +340,9 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
                 &PlanetHandle,
                 Result<Result<(), MoveResult>, MoveResultPlanetError>,
             ) {
-                let result = match dest_planet.incoming_explorer_request(
-                    self.id,
-                    self.state.planet_sender.clone(),
-                ) {
+                let result = match dest_planet
+                    .incoming_explorer_request(self.id, self.state.planet_sender.clone())
+                {
                     //Request completed successfully and was accpeted
                     Ok(Ok(())) => {
                         match current_planet.outgoing_explorer_request(self.id) {
@@ -378,7 +475,7 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
 }
 
 impl<'a> ExplorerHandle<Born<Placed<'a, Paused>>> {
-    pub fn unpause_explorer_ai(self) -> Result<ExplorerHandle<Born<Placed<'a, Running>>>, ()> {
+    pub fn resume(self) -> Result<ExplorerHandle<Born<Placed<'a, Running>>>, ()> {
         if let Ok(_) = self.state.channel.send_and_check_ack(
             OrchestratorToExplorer::StartExplorerAI,
             ExplorerToOrchestratorKind::StartExplorerAIResult,
@@ -417,7 +514,7 @@ impl<'a> ExplorerHandle<Born<Placed<'a, Paused>>> {
 }
 
 impl<'a> ExplorerHandle<Born<Placed<'a, Running>>> {
-    pub fn pause_explorer_ai(self) -> Result<ExplorerHandle<Born<Placed<'a, Paused>>>, ()> {
+    pub fn stop(self) -> Result<ExplorerHandle<Born<Placed<'a, Paused>>>, ()> {
         if let Ok(_) = self.state.channel.send_and_check_ack(
             OrchestratorToExplorer::StopExplorerAI,
             ExplorerToOrchestratorKind::StopExplorerAIResult,
