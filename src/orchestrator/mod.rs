@@ -446,7 +446,7 @@ impl Orchestrator {
                     let explorer = match explorer_handles.get_mut(explorer) {
                         Some(GenericExplorer::Stopped(explorer_handle)) => explorer_handle,
                         Some(_) => {
-                            println!("Can only manually move stopped planets");
+                            println!("Can only manually move stopped explorers");
                             return;
                         }
                         None => {
