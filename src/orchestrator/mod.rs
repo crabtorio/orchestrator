@@ -447,11 +447,11 @@ impl Orchestrator {
                         Some(GenericExplorer::Stopped(explorer_handle)) => explorer_handle,
                         Some(_) => {
                             println!("Can only manually move stopped explorers");
-                            return;
+                            continue;
                         }
                         None => {
                             println!("Explorer not found");
-                            return;
+                            continue;
                         }
                     };
 
@@ -460,7 +460,7 @@ impl Orchestrator {
                         planet_handle
                     } else {
                         println!("Planet not found");
-                        return;
+                        continue;
                     };
 
                     let res = explorer.move_to_planet(planet_handle);
