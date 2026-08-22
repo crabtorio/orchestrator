@@ -379,7 +379,7 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
             //Othrewiese
             _ => OrchestratorToExplorer::MoveToPlanet {
                 sender_to_new_planet: None,
-                planet_id: self.id as ID,
+                planet_id: self.state.location.planet.id,
             },
         });
 
