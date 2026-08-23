@@ -15,7 +15,7 @@ pub trait Ai: Send {
         &self,
         ai_queue: Arc<Mutex<VecDeque<Command>>>,
         runflag: Arc<AtomicBool>,
-        ai_args: AiArgs
+        ai_args: AiArgs,
     );
 }
 pub enum AiType {
@@ -74,8 +74,10 @@ impl Ai for RichardRandom {
                     thread::sleep(sleep_millis);
                 }
                 log::debug!("AI: RichardRandom says bye bye");
-            },
-            _ => {log::error!("AI: Wrong arguments supplied to RichardRandom");}
+            }
+            _ => {
+                log::error!("AI: Wrong arguments supplied to RichardRandom");
+            }
         }
     }
 }
