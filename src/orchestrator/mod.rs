@@ -502,8 +502,12 @@ impl Orchestrator {
                 }
                 SupportedResourceRequest(explorer_id) => {
                     let supported_resources = match explorer_handles.get(explorer_id) {
-                        Some(GenericExplorer::Running(explorer)) => explorer.get_supported_resources(),
-                        Some(GenericExplorer::Stopped(explorer)) => explorer.get_supported_resources(),
+                        Some(GenericExplorer::Running(explorer)) => {
+                            explorer.get_supported_resources()
+                        }
+                        Some(GenericExplorer::Stopped(explorer)) => {
+                            explorer.get_supported_resources()
+                        }
                         Some(_) => {
                             println!("Explorer is not on any planet");
                             return;
@@ -516,13 +520,19 @@ impl Orchestrator {
 
                     match supported_resources {
                         Ok(resources) => println!("{resources:#?}"),
-                        Err(_) => println!("There was an error while getting the supported resources"),
+                        Err(_) => {
+                            println!("There was an error while getting the supported resources")
+                        }
                     }
-                },
+                }
                 SupportedCombinationRequest(explorer_id) => {
                     let supported_combinations = match explorer_handles.get(explorer_id) {
-                        Some(GenericExplorer::Running(explorer)) => explorer.get_supported_combinations(),
-                        Some(GenericExplorer::Stopped(explorer)) => explorer.get_supported_combinations(),
+                        Some(GenericExplorer::Running(explorer)) => {
+                            explorer.get_supported_combinations()
+                        }
+                        Some(GenericExplorer::Stopped(explorer)) => {
+                            explorer.get_supported_combinations()
+                        }
                         Some(_) => {
                             println!("Explorer is not on any planet");
                             return;
@@ -535,9 +545,11 @@ impl Orchestrator {
 
                     match supported_combinations {
                         Ok(combinations) => println!("{combinations:#?}"),
-                        Err(_) => println!("There was an error while getting the supported combiniations"),
+                        Err(_) => {
+                            println!("There was an error while getting the supported combiniations")
+                        }
                     }
-                },
+                }
                 BagContentRquest(explorer_id) => {
                     let bag_content = match explorer_handles.get(explorer_id) {
                         Some(GenericExplorer::Running(explorer)) => explorer.get_bag_content(),
@@ -555,9 +567,11 @@ impl Orchestrator {
 
                     match bag_content {
                         Ok(bag_content) => println!("{bag_content:#?}"),
-                        Err(_) => println!("There was an error while getting the supported combiniations"),
+                        Err(_) => {
+                            println!("There was an error while getting the supported combiniations")
+                        }
                     }
-                },
+                }
                 InternalStateRequest(_) => todo!(),
                 GenerateResourceRequest(explorer_id, basic_resource_type) => todo!(),
                 CombineResourceRequest(explorer_id, complex_resource_type) => todo!(),
