@@ -6,8 +6,7 @@ use crate::orchestrator::Command::*;
 use crate::orchestrator::ai::AiType::RichardRandom as RichardRandomType;
 use crate::orchestrator::ai::{Ai, AiArgs, AiType, RichardRandom};
 use crate::orchestrator::explorer_handle::{
-    ExplorerSet, GenericExplorer, MoveResult, MoveResultError, PausedExploererHandle,
-    RunningExploererHandle, UnbornExplorerHandle,
+    ExplorerSet, GenericExplorer, MoveResult, MoveResultError, RunningExploererHandle,
 };
 use crate::orchestrator::shell::Shell;
 use common_game::components::asteroid::Asteroid;
@@ -16,13 +15,8 @@ use common_game::components::resource::{BasicResourceType, ComplexResourceType};
 use common_game::components::sunray::Sunray;
 use common_game::protocols::orchestrator_planet::PlanetToOrchestrator::AsteroidAck;
 use common_game::{
-    protocols::{orchestrator_explorer, orchestrator_planet, planet_explorer},
+    protocols::{orchestrator_planet, planet_explorer},
     utils::ID,
-};
-use explorer_common::Bag;
-use luna4::planet::PlanetToExplorer;
-use orchestrator_explorer::{
-    ExplorerToOrchestrator, ExplorerToOrchestratorKind, OrchestratorToExplorer,
 };
 use orchestrator_planet::{OrchestratorToPlanet, PlanetToOrchestrator};
 use std::cell::RefCell;
@@ -36,7 +30,7 @@ use std::{
     sync::{Arc, Mutex},
     thread::{self, JoinHandle},
 };
-use std::{print, println, todo, vec};
+use std::{println, todo};
 pub mod ai;
 
 pub struct Orchestrator {
@@ -838,7 +832,7 @@ impl PlanetHandle {
     fn incoming_explorer_request(
         &self,
         explorer_id: ExplorerID,
-        new_sender: crossbeam_channel::Sender<PlanetToExplorer>,
+        new_sender: crossbeam_channel::Sender<planet_explorer::PlanetToExplorer>,
     ) -> Result<Result<(), String>, ()> {
         let send_result = self
             .tx_planet
