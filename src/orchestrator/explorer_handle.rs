@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     format,
     thread::{self, JoinHandle},
     vec,
@@ -12,6 +12,7 @@ use crate::{
 use explorer_common::logged_channel::LoggedChannel;
 
 use common_game::{
+    components::resource::{BasicResourceType, ComplexResourceType},
     logging::{ActorType, Channel as LogChannel, EventType, LogEvent, Participant, Payload},
     protocols::orchestrator_explorer::{
         ExplorerToOrchestrator, ExplorerToOrchestratorKind, OrchestratorToExplorer,
@@ -248,7 +249,8 @@ impl<Any> ExplorerHandle<Born<Any>> {
                         ("Expected".into(), format!("{expected:?}")),
                         ("Got".into(), format!("{other:?}")),
                     ]),
-                );
+                )
+                .emit();
                 Err(())
             }
         }
@@ -470,6 +472,73 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
             Err(())
         } else {
             Ok(())
+        }
+    }
+}
+
+impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
+    /// This method just returns the current planet of the explorer, as is known by the Orchestrator
+    pub fn get_current_planet(&self) -> ID {
+        self.state.location.planet.id
+    }
+
+    pub fn get_supported_combinations(&self) -> Result<HashSet<ComplexResourceType>, ()> {
+        self.state
+            .channel
+            .send(OrchestratorToExplorer::SupportedCombinationRequest)
+            .map_err(|_| {})?;
+        let response = self.state.channel.recv().map_err(|_| {})?;
+        match response {
+            ExplorerToOrchestrator::SupportedCombinationResult {
+                explorer_id,
+                combination_list,
+            } => {
+                self.ensure_id_matches(explorer_id)?;
+                Ok(combination_list)
+            }
+            other => {
+                let expected = ExplorerToOrchestratorKind::SupportedCombinationResult;
+                self.make_inbound_msg_log_event(
+                    LogChannel::Error,
+                    Payload::from([
+                        ("Message".into(), "Recieved invalid response".into()),
+                        ("Expected".into(), format!("{expected:?}")),
+                        ("Got".into(), format!("{other:?}")),
+                    ]),
+                )
+                .emit();
+                Err(())
+            }
+        }
+    }
+
+    pub fn get_supported_resources(&self) -> Result<HashSet<BasicResourceType>, ()> {
+        self.state
+            .channel
+            .send(OrchestratorToExplorer::SupportedResourceRequest)
+            .map_err(|_| {})?;
+        let response = self.state.channel.recv().map_err(|_| {})?;
+        match response {
+            ExplorerToOrchestrator::SupportedResourceResult {
+                explorer_id,
+                supported_resources,
+            } => {
+                self.ensure_id_matches(explorer_id)?;
+                Ok(supported_resources)
+            }
+            other => {
+                let expected = ExplorerToOrchestratorKind::SupportedResourceResult;
+                self.make_inbound_msg_log_event(
+                    LogChannel::Error,
+                    Payload::from([
+                        ("Message".into(), "Recieved invalid response".into()),
+                        ("Expected".into(), format!("{expected:?}")),
+                        ("Got".into(), format!("{other:?}")),
+                    ]),
+                )
+                .emit();
+                Err(())
+            }
         }
     }
 }

@@ -484,10 +484,80 @@ impl Orchestrator {
                         },
                     }
                 }
-                CurrentPlanetRequest(explorer_id) => todo!(),
-                SupportedResourceRequest(explorer_id) => todo!(),
-                SupportedCombinationRequest(explorer_id) => todo!(),
-                BagContentRquest(explorer_id) => todo!(),
+                CurrentPlanetRequest(explorer_id) => {
+                    let current_planet = match explorer_handles.get(explorer_id) {
+                        Some(GenericExplorer::Running(explorer)) => explorer.get_current_planet(),
+                        Some(GenericExplorer::Stopped(explorer)) => explorer.get_current_planet(),
+                        Some(_) => {
+                            println!("Explorer is not on any planet");
+                            return;
+                        }
+                        None => {
+                            println!("Not found");
+                            return;
+                        }
+                    };
+
+                    println!("{current_planet}")
+                }
+                SupportedResourceRequest(explorer_id) => {
+                    let supported_resources = match explorer_handles.get(explorer_id) {
+                        Some(GenericExplorer::Running(explorer)) => explorer.get_supported_resources(),
+                        Some(GenericExplorer::Stopped(explorer)) => explorer.get_supported_resources(),
+                        Some(_) => {
+                            println!("Explorer is not on any planet");
+                            return;
+                        }
+                        None => {
+                            println!("Not found");
+                            return;
+                        }
+                    };
+
+                    match supported_resources {
+                        Ok(resources) => println!("{resources:#?}"),
+                        Err(_) => println!("There was an error while getting the supported resources"),
+                    }
+                },
+                SupportedCombinationRequest(explorer_id) => {
+                    let supported_combinations = match explorer_handles.get(explorer_id) {
+                        Some(GenericExplorer::Running(explorer)) => explorer.get_supported_combinations(),
+                        Some(GenericExplorer::Stopped(explorer)) => explorer.get_supported_combinations(),
+                        Some(_) => {
+                            println!("Explorer is not on any planet");
+                            return;
+                        }
+                        None => {
+                            println!("Not found");
+                            return;
+                        }
+                    };
+
+                    match supported_combinations {
+                        Ok(combinations) => println!("{combinations:#?}"),
+                        Err(_) => println!("There was an error while getting the supported combiniations"),
+                    }
+                },
+                BagContentRquest(explorer_id) => {
+                    let bag_content = match explorer_handles.get(explorer_id) {
+                        Some(GenericExplorer::Running(explorer)) => explorer.get_bag_content(),
+                        Some(GenericExplorer::Stopped(explorer)) => explorer.get_bag_content(),
+                        Some(GenericExplorer::Unplaced(explorer)) => explorer.get_bag_content(),
+                        Some(_) => {
+                            println!("Explorer has not been initialized");
+                            return;
+                        }
+                        None => {
+                            println!("Not found");
+                            return;
+                        }
+                    };
+
+                    match bag_content {
+                        Ok(bag_content) => println!("{bag_content:#?}"),
+                        Err(_) => println!("There was an error while getting the supported combiniations"),
+                    }
+                },
                 InternalStateRequest(_) => todo!(),
                 GenerateResourceRequest(explorer_id, basic_resource_type) => todo!(),
                 CombineResourceRequest(explorer_id, complex_resource_type) => todo!(),
