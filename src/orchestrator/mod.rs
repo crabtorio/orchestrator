@@ -567,8 +567,50 @@ impl Orchestrator {
                     }
                 }
                 InternalStateRequest(planet_id) => todo!(),
-                GenerateResourceRequest(explorer_id, basic_resource_type) => todo!(),
-                CombineResourceRequest(explorer_id, complex_resource_type) => todo!(),
+                GenerateResourceRequest(explorer_id, basic_resource_type) => {
+                    let result = match explorer_handles.get(explorer_id) {
+                        Some(GenericExplorer::Stopped(explorer)) => {
+                            explorer.try_generate_resource(basic_resource_type)
+                        }
+                        Some(_) => {
+                            println!("Explorer is not in manual mode");
+                            return;
+                        }
+                        None => {
+                            println!("Not found");
+                            return;
+                        }
+                    };
+
+                    match result {
+                        Ok(Ok(())) => (),
+                        Ok(Err(reason)) => println!("Could not generate the reosurce: `{reason}`"),
+                        Err(()) => println!("There was an error while generating the resource"),
+                    }
+                }
+                CombineResourceRequest(explorer_id, complex_resource_type) => {
+                    let result = match explorer_handles.get(explorer_id) {
+                        Some(GenericExplorer::Stopped(explorer)) => {
+                            explorer.try_combine_resources(complex_resource_type)
+                        }
+                        Some(_) => {
+                            println!("Explorer is not in manual mode");
+                            return;
+                        }
+                        None => {
+                            println!("Not found");
+                            return;
+                        }
+                    };
+
+                    match result {
+                        Ok(Ok(())) => (),
+                        Ok(Err(reason)) => {
+                            println!("Could not complete the combination: `{reason}`")
+                        }
+                        Err(()) => println!("There was an error while combining the resources"),
+                    }
+                }
             }
         }
 

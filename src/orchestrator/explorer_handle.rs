@@ -579,7 +579,71 @@ impl<'a> ExplorerHandle<Born<Placed<'a, Paused>>> {
         self.move_to_planet_intnl(Some(planet))
     }
 
-    //TODO all other manual mode funcs
+    pub fn try_combine_resources(
+        &self,
+        to_generate: ComplexResourceType,
+    ) -> Result<Result<(), String>, ()> {
+        self.state
+            .channel
+            .send(OrchestratorToExplorer::CombineResourceRequest { to_generate })
+            .map_err(|_| {})?;
+        let response = self.state.channel.recv().map_err(|_| {})?;
+        match response {
+            ExplorerToOrchestrator::CombineResourceResponse {
+                explorer_id,
+                generated,
+            } => {
+                self.ensure_id_matches(explorer_id)?;
+                Ok(generated)
+            }
+            other => {
+                let expected = ExplorerToOrchestratorKind::CombineResourceResponse;
+                self.make_inbound_msg_log_event(
+                    LogChannel::Error,
+                    Payload::from([
+                        ("Message".into(), "Recieved invalid response".into()),
+                        ("Expected".into(), format!("{expected:?}")),
+                        ("Got".into(), format!("{other:?}")),
+                    ]),
+                )
+                .emit();
+                Err(())
+            }
+        }
+    }
+
+    pub fn try_generate_resource(
+        &self,
+        to_generate: BasicResourceType,
+    ) -> Result<Result<(), String>, ()> {
+        self.state
+            .channel
+            .send(OrchestratorToExplorer::GenerateResourceRequest { to_generate })
+            .map_err(|_| {})?;
+        let response = self.state.channel.recv().map_err(|_| {})?;
+        match response {
+            ExplorerToOrchestrator::GenerateResourceResponse {
+                explorer_id,
+                generated,
+            } => {
+                self.ensure_id_matches(explorer_id)?;
+                Ok(generated)
+            }
+            other => {
+                let expected = ExplorerToOrchestratorKind::GenerateResourceResponse;
+                self.make_inbound_msg_log_event(
+                    LogChannel::Error,
+                    Payload::from([
+                        ("Message".into(), "Recieved invalid response".into()),
+                        ("Expected".into(), format!("{expected:?}")),
+                        ("Got".into(), format!("{other:?}")),
+                    ]),
+                )
+                .emit();
+                Err(())
+            }
+        }
+    }
 }
 
 impl<'a> ExplorerHandle<Born<Placed<'a, Running>>> {
