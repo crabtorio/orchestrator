@@ -2,10 +2,6 @@ use env_logger::Builder;
 use log::LevelFilter;
 
 pub fn init() {
-    unsafe {
-        // Must be removed at some point
-        std::env::set_var("RUST_LOG", "debug");
-    }
     // To silence all other crates' logging
     Builder::new()
         .filter(None, LevelFilter::Off)

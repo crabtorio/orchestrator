@@ -49,6 +49,12 @@ impl ClapCommand {
                 planet_count,
                 expected_percentage,
             } => {
+                if planet_count <= 0 {
+                    return Err(Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "planet_count must be greater than 0",
+                    ));
+                }
                 let galaxy = Galaxy::from_random_distribution(planet_count, expected_percentage);
 
                 let json = serde_json::to_string_pretty(&galaxy)?;

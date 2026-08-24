@@ -31,8 +31,9 @@ impl Shell {
             print!("> ");
             io::stdout().flush().unwrap();
             let mut input = String::new();
-            if let Ok(_) = io::stdin().read_line(&mut input) {
-                match parse_command(input.trim().to_string()) {
+            match io::stdin().read_line(&mut input) {
+                Ok(0) => break,
+                Ok(_) => match parse_command(input.trim().to_string()) {
                     Ok(command) => {
                         if let Exit = command {
                             self.user_queue.lock().unwrap().push_back(command);
@@ -41,9 +42,10 @@ impl Shell {
                         self.user_queue.lock().unwrap().push_back(command);
                     }
                     Err(error) => {
-                        println!("Error: {}", error);
+                        log::error!("Parsing error: {}", error);
                     }
-                }
+                },
+                Err(err) => log::error!("Shell error: {}", err),
             }
         }
     }
@@ -51,138 +53,265 @@ impl Shell {
 fn parse_command(mut input: String) -> Result<Command, String> {
     input.make_ascii_lowercase();
     let parts: Vec<&str> = input.split_whitespace().collect();
+    if parts.is_empty() {
+        return Err(String::from("Command is empty"));
+    }
     let command = parts[0];
 
     let arguments = &parts[1..];
 
     match command {
-        "startexplorers" => Ok(ResumeExplorers),
+        "startexplorers" => Ok(StartExplorers),
         "stopexplorers" => Ok(PauseExplorers),
         "killexplorers" => Ok(KillExplorers),
         "resetexplorers" => Ok(ResetExplorers),
         "startexplorer" => Ok(ResumeExplorer({
-            if arguments[0] == "0" {
-                super::ExplorerID::First
+            if let Some(argument) = arguments.get(0) {
+                if *argument == "0" {
+                    super::ExplorerID::First
+                } else {
+                    super::ExplorerID::Second
+                }
             } else {
-                super::ExplorerID::Second
+                return Err(format!(
+                    "No arguments given, but needed by 'startexplorer' command"
+                ));
             }
         })),
         "stopexplorer" => Ok(StopExplorer({
-            if arguments[0] == "0" {
-                super::ExplorerID::First
+            if let Some(argument) = arguments.get(0) {
+                if *argument == "0" {
+                    super::ExplorerID::First
+                } else {
+                    super::ExplorerID::Second
+                }
             } else {
-                super::ExplorerID::Second
+                return Err(String::from(
+                    "No arguments given, but needed by 'stopexplorer' command",
+                ));
             }
         })),
         "killexplorer" => Ok(KillExplorer({
-            if arguments[0] == "0" {
-                super::ExplorerID::First
+            if let Some(argument) = arguments.get(0) {
+                if *argument == "0" {
+                    super::ExplorerID::First
+                } else {
+                    super::ExplorerID::Second
+                }
             } else {
-                super::ExplorerID::Second
+                return Err(String::from(
+                    "No arguments given, but needed by 'killexplorer' command",
+                ));
             }
         })),
         "resetexplorer" => Ok(ResetExplorer({
-            if arguments[0] == "0" {
-                super::ExplorerID::First
+            if let Some(argument) = arguments.get(0) {
+                if *argument == "0" {
+                    super::ExplorerID::First
+                } else {
+                    super::ExplorerID::Second
+                }
             } else {
-                super::ExplorerID::Second
+                return Err(format!(
+                    "No arguments given, but needed by 'resetexplorer' command"
+                ));
             }
         })),
         "moveexplorer" => Ok(MoveExplorer {
-            planet_id: arguments[0].parse::<ID>().map_err(|err| err.to_string())?,
-            explorer: if arguments[1] == "0" {
-                super::ExplorerID::First
+            planet_id: if let Some(argument) = arguments.get(0) {
+                argument.parse::<ID>().map_err(|err| err.to_string())?
             } else {
-                super::ExplorerID::Second
+                return Err(String::from(
+                    "No argument given, needed by 'moveexplorer' command",
+                ));
+            },
+            explorer: if let Some(argument) = arguments.get(1) {
+                if *argument == "0" {
+                    super::ExplorerID::First
+                } else {
+                    super::ExplorerID::Second
+                }
+            } else {
+                return Err(String::from(
+                    "Missing second argument, needed by 'moveexplorer' command",
+                ));
             },
         }),
         "currentplanetrequest" => Ok(CurrentPlanetRequest({
-            if arguments[0] == "0" {
-                super::ExplorerID::First
+            if let Some(argument) = arguments.get(0) {
+                if *argument == "0" {
+                    super::ExplorerID::First
+                } else {
+                    super::ExplorerID::Second
+                }
             } else {
-                super::ExplorerID::Second
+                return Err(String::from(
+                    "No arguments given, but needed by 'currentplanetrequest' command",
+                ));
             }
         })),
         "supportedresourcerequest" => Ok(SupportedResourceRequest({
-            if arguments[0] == "0" {
-                super::ExplorerID::First
+            if let Some(argument) = arguments.get(0) {
+                if *argument == "0" {
+                    super::ExplorerID::First
+                } else {
+                    super::ExplorerID::Second
+                }
             } else {
-                super::ExplorerID::Second
+                return Err(String::from(
+                    "No arguments given, but needed by 'supportedresourcerequest' command",
+                ));
             }
         })),
         "supportedcombinationrequest" => Ok(SupportedCombinationRequest({
-            if arguments[0] == "0" {
-                super::ExplorerID::First
+            if let Some(argument) = arguments.get(0) {
+                if *argument == "0" {
+                    super::ExplorerID::First
+                } else {
+                    super::ExplorerID::Second
+                }
             } else {
-                super::ExplorerID::Second
+                return Err(String::from(
+                    "No arguments given, but needed by 'supportedcombinationrequest' command",
+                ));
             }
         })),
         "generateresourcerequest" => Ok(GenerateResourceRequest(
-            if arguments[0] == "0" {
-                super::ExplorerID::First
+            if let Some(argument) = arguments.get(0) {
+                if *argument == "0" {
+                    super::ExplorerID::First
+                } else {
+                    super::ExplorerID::Second
+                }
             } else {
-                super::ExplorerID::Second
+                return Err(String::from(
+                    "No arguments given, but needed by 'generateresourcerequest' command",
+                ));
             },
-            if let Ok(ResourceType::Basic(res)) = string_to_resource(arguments[1]) {
+            if let Ok(ResourceType::Basic(res)) =
+                string_to_resource(if let Some(argument) = arguments.get(1) {
+                    *argument
+                } else {
+                    return Err(String::from(
+                        "Second argument missing, needed by 'generateresourcerequest' command",
+                    ));
+                })
+            {
                 res
             } else {
-                return Err(format!(
-                    "expected Basic resource, found complex resource: {}",
-                    arguments[1]
+                return Err(String::from(
+                    "expected Basic resource, found complex resource",
                 ));
             },
         )),
         "combineresourcerequest" => Ok(CombineResourceRequest(
-            if arguments[0] == "0" {
-                super::ExplorerID::First
+            if let Some(argument) = arguments.get(0) {
+                if *argument == "0" {
+                    super::ExplorerID::First
+                } else {
+                    super::ExplorerID::Second
+                }
             } else {
-                super::ExplorerID::Second
+                return Err(String::from(
+                    "No arguments given, but needed by 'combineresourcerequest' command",
+                ));
             },
-            if let Ok(ResourceType::Complex(res)) = string_to_resource(arguments[1]) {
+            if let Ok(ResourceType::Complex(res)) =
+                string_to_resource(if let Some(argument) = arguments.get(1) {
+                    *argument
+                } else {
+                    return Err(String::from(
+                        "Second argument missing, needed by 'combineresourcerequest' command",
+                    ));
+                })
+            {
                 res
             } else {
-                return Err(format!(
-                    "expected Complex resource, found complex resource: {}",
-                    arguments[1]
+                return Err(String::from(
+                    "expected Complex resource, found basic resource",
                 ));
             },
         )),
         "bagcontentrequest" => Ok(BagContentRquest({
-            if arguments[0] == "0" {
-                super::ExplorerID::First
+            if let Some(argument) = arguments.get(0) {
+                if *argument == "0" {
+                    super::ExplorerID::First
+                } else {
+                    super::ExplorerID::Second
+                }
             } else {
-                super::ExplorerID::Second
+                return Err(String::from(
+                    "No arguments given, but needed by 'bagcontentrequest' command",
+                ));
             }
         })),
         "startplanets" => Ok(StartPlanets),
         "stopplanets" => Ok(StopPlanets),
         "killplanets" => Ok(KillPlanets),
-        "startplanet" => Ok(StartPlanet(
-            arguments[0].parse::<ID>().map_err(|err| err.to_string())?,
-        )),
-        "stopplanet" => Ok(StopPlanet(
-            arguments[0].parse::<ID>().map_err(|err| err.to_string())?,
-        )),
-        "killplanet" => Ok(KillPlanet(
-            arguments[0].parse::<ID>().map_err(|err| err.to_string())?,
-        )),
-        "sendsunray" => Ok(SendSunray(
-            arguments[0].parse::<ID>().map_err(|err| err.to_string())?,
-        )),
-        "sendasteroid" => Ok(SendAsteroid(
-            arguments[0].parse::<ID>().map_err(|err| err.to_string())?,
-        )),
-        "internalstaterequest" => Ok(InternalStateRequest(
-            arguments[0].parse::<ID>().map_err(|err| err.to_string())?,
-        )),
-        "spawnai" => Ok(SpawnAi(if let Ok(ai_type) = string_to_ai(arguments[0]) {
-            ai_type
+        "startplanet" => Ok(StartPlanet(if let Some(argument) = arguments.get(0) {
+            argument.parse::<ID>().map_err(|err| err.to_string())?
         } else {
-            return Err(format!("{} is not a valid Ai format", arguments[0]));
+            return Err(String::from(
+                "No argument given, needed by 'startplanet' command",
+            ));
         })),
-        "killai" => Ok(KillAi(
-            arguments[0].parse::<ID>().map_err(|err| err.to_string())?,
+        "stopplanet" => Ok(StopPlanet(if let Some(argument) = arguments.get(0) {
+            argument.parse::<ID>().map_err(|err| err.to_string())?
+        } else {
+            return Err(String::from(
+                "No argument given, needed by 'stopplanet' command",
+            ));
+        })),
+        "killplanet" => Ok(KillPlanet(if let Some(argument) = arguments.get(0) {
+            argument.parse::<ID>().map_err(|err| err.to_string())?
+        } else {
+            return Err(String::from(
+                "No argument given, needed by 'killplanet' command",
+            ));
+        })),
+        "sendsunray" => Ok(SendSunray(if let Some(argument) = arguments.get(0) {
+            argument.parse::<ID>().map_err(|err| err.to_string())?
+        } else {
+            return Err(String::from(
+                "No argument given, needed by 'sendsunray' command",
+            ));
+        })),
+        "sendasteroid" => Ok(SendAsteroid(if let Some(argument) = arguments.get(0) {
+            argument.parse::<ID>().map_err(|err| err.to_string())?
+        } else {
+            return Err(String::from(
+                "No argument given, needed by 'sendasteroid' command",
+            ));
+        })),
+        "internalstaterequest" => Ok(InternalStateRequest(
+            if let Some(argument) = arguments.get(0) {
+                argument.parse::<ID>().map_err(|err| err.to_string())?
+            } else {
+                return Err(String::from(
+                    "No argument given, needed by 'internalstaterequest' command",
+                ));
+            },
         )),
+        "spawnai" => Ok(SpawnAi(
+            if let Ok(ai_type) = string_to_ai(if let Some(argument) = arguments.get(0) {
+                *argument
+            } else {
+                return Err(String::from(
+                    "No argument given, needed by 'spawnai' command",
+                ));
+            }) {
+                ai_type
+            } else {
+                return Err(String::from("Not a valid Ai format"));
+            },
+        )),
+        "killai" => Ok(KillAi(if let Some(argument) = arguments.get(0) {
+            argument.parse::<ID>().map_err(|err| err.to_string())?
+        } else {
+            return Err(String::from(
+                "No argument given, needed by 'killai' command",
+            ));
+        })),
         "showrunningais" => Ok(ShowRunningAis),
         "exit" => Ok(Exit),
         _ => Err(format!("Command '{}' is invalid", command)),
@@ -205,7 +334,7 @@ fn string_to_resource(str: &str) -> Result<ResourceType, ()> {
         "life" => Ok(ResourceType::Complex(Life)),
         "robot" => Ok(ResourceType::Complex(Robot)),
         "dolphin" => Ok(ResourceType::Complex(Dolphin)),
-        "aIPartner" => Ok(ResourceType::Complex(AIPartner)),
+        "aipartner" => Ok(ResourceType::Complex(AIPartner)),
         _ => Err(()),
     }
 }

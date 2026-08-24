@@ -50,8 +50,10 @@ impl AiHandle {
         static NEXT_ID: AtomicU32 = AtomicU32::new(0);
         let run_flag = Arc::new(AtomicBool::new(true));
         let closure_flag = run_flag.clone();
+        let id = NEXT_ID.load(Relaxed);
+        NEXT_ID.fetch_add(1, Relaxed);
         Self {
-            id: NEXT_ID.load(Relaxed),
+            id: id,
             handle: { thread::spawn(move || ai.run(queue, closure_flag, args)) },
             run_flag: run_flag,
         }

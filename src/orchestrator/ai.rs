@@ -55,7 +55,7 @@ impl Ai for RichardRandom {
                         log::debug!("AI: RichardRandom Sent Sunray to planet ID: {}", target);
                     } else if !(action <= NOTHING_WEIGHT) {
                         //Send asteroid to target
-                        lock.push_back(Command::SendSunray(target));
+                        lock.push_back(Command::SendAsteroid(target));
                         log::debug!("AI: RichardRandom Sent Asteroid to planet ID: {}", target);
                     }
 
