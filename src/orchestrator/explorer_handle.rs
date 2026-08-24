@@ -40,7 +40,7 @@ pub struct Born<Location> {
 pub struct Unplaced;
 pub struct Placed<'a, Substate> {
     planet: &'a PlanetHandle,
-    run_state: Substate,
+    _run_state: Substate,
 }
 pub struct Paused;
 pub struct Running;
@@ -565,7 +565,7 @@ impl<'a> ExplorerHandle<Born<Placed<'a, Paused>>> {
                     planet_sender: self.state.planet_sender,
                     location: Placed {
                         planet: self.state.location.planet,
-                        run_state: Running,
+                        _run_state: Running,
                     },
                 },
             })
@@ -668,7 +668,7 @@ impl<'a> ExplorerHandle<Born<Placed<'a, Running>>> {
                     planet_sender: self.state.planet_sender,
                     location: Placed {
                         planet: self.state.location.planet,
-                        run_state: Paused,
+                        _run_state: Paused,
                     },
                 },
             })
