@@ -2,13 +2,13 @@ mod explorer_handle;
 mod shell;
 
 use crate::galaxy_generator::{Galaxy, PlanetContainer};
-use crate::orchestrator::Command::*;
 use crate::orchestrator::ai::AiType::RichardRandom as RichardRandomType;
 use crate::orchestrator::ai::{Ai, AiArgs, AiType, RichardRandom};
 use crate::orchestrator::explorer_handle::{
     ExplorerSet, GenericExplorer, MoveResult, MoveResultError, RunningExploererHandle,
 };
 use crate::orchestrator::shell::Shell;
+use crate::orchestrator::Command::*;
 use common_game::components::asteroid::Asteroid;
 use common_game::components::planet::DummyPlanetState;
 use common_game::components::resource::{BasicResourceType, ComplexResourceType};
@@ -131,6 +131,8 @@ pub enum Command {
     KillAi(ID),     // ai_handles ID
     ShowRunningAis, // Also shows AI IDs
     Exit,
+
+    Nothing, // To be returned by the parserer when the command doesn't involve any orchestrator action
 }
 
 enum Event {
@@ -613,6 +615,7 @@ impl Orchestrator {
                         Err(()) => println!("There was an error while combining the resources"),
                     }
                 }
+                Nothing => (),
             }
         }
 

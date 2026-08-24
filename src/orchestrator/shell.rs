@@ -14,8 +14,8 @@ use common_game::{
 };
 
 use crate::orchestrator::{
-    Command::{self, *},
     ai::AiType::{self, RichardRandom},
+    Command::{self, *},
 };
 
 pub struct Shell {
@@ -34,13 +34,16 @@ impl Shell {
             match io::stdin().read_line(&mut input) {
                 Ok(0) => break,
                 Ok(_) => match parse_command(input.trim().to_string()) {
-                    Ok(command) => {
-                        if let Exit = command {
+                    Ok(command) => match command {
+                        Exit => {
                             self.user_queue.lock().unwrap().push_back(command);
                             break;
                         }
-                        self.user_queue.lock().unwrap().push_back(command);
-                    }
+                        Nothing => {
+                            print_commands();
+                        }
+                        _ => self.user_queue.lock().unwrap().push_back(command),
+                    },
                     Err(error) => {
                         log::error!("Parsing error: {}", error);
                     }
@@ -314,6 +317,7 @@ fn parse_command(mut input: String) -> Result<Command, String> {
         })),
         "showrunningais" => Ok(ShowRunningAis),
         "exit" => Ok(Exit),
+        "help" => Ok(Nothing),
         _ => Err(format!("Command '{}' is invalid", command)),
     }
 }
@@ -338,7 +342,32 @@ fn string_to_resource(str: &str) -> Result<ResourceType, ()> {
         _ => Err(()),
     }
 }
+fn print_commands() {
+    print!(
+        "Available commands:
+      startplanets / stopplanets / killplanets
+      startplanet <id> / stopplanet <id> / killplanet <id>
+      sendsunray <id> / sendasteroid <id> / internalstaterequest <id>
 
+      startexplorers / stopexplorers / killexplorers / resetexplorers
+      startexplorer <0|1> / stopexplorer <0|1> / killexplorer <0|1> / resetexplorer <0|1>
+      moveexplorer <planet_id> <0|1>
+
+      currentplanetrequest <0|1>
+      supportedresourcerequest <0|1>
+      supportedcombinationrequest <0|1>
+      bagcontentrequest <0|1>
+      generateresourcerequest <0|1> <resource>
+      combineresourcerequest <0|1> <resource>
+
+      spawnai <ai_type>
+      killai <id>
+      showrunningais
+
+      exit
+    "
+    );
+}
 #[cfg(test)]
 mod test {
     use super::parse_command;
