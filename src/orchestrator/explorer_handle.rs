@@ -334,7 +334,7 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
         &mut self,
         maybe_dest_planet: Option<&'a PlanetHandle>,
     ) -> Result<MoveResult, MoveResultError> {
-        let mut current_planet = &self.state.location.planet;
+        let current_planet = &self.state.location.planet;
 
         //If we are actually about to move, we need to check out of the previous planet and check in with the new planet.
         let check_in_out_result = maybe_dest_planet.map(
@@ -342,6 +342,9 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
                 &PlanetHandle,
                 Result<Result<(), MoveResult>, MoveResultPlanetError>,
             ) {
+                use MoveResult::*;
+                use MoveResultPlanetError::*;
+                
                 let result = match dest_planet
                     .incoming_explorer_request(self.id, self.state.planet_sender.clone())
                 {
@@ -351,22 +354,22 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
                             //Request completed successfully and was accpeted
                             Ok(Ok(())) => Ok(Ok(())),
                             //Request did not go through fully. We must revert the request for the explorer to move
-                            res => match dest_planet.outgoing_explorer_request(self.id) {
-                                Ok(Ok(v)) => Ok(Err(MoveResult::SourcePlanetRefused)),
-                                Err(_) | Ok(Err(_)) => {
-                                    if res.is_err() {
-                                        Err(MoveResultPlanetError::BothPlanetsFailed)
-                                    } else {
-                                        Err(MoveResultPlanetError::DestPlanetFailed)
-                                    }
-                                }
+                            current_planet_res => match (
+                                current_planet_res,
+                                dest_planet.outgoing_explorer_request(self.id),
+                            ) {
+                                //Properly map the return status
+                                (Ok(_), Ok(Ok(()))) => Ok(Err(SourcePlanetRefused)),
+                                (Ok(_), Ok(Err(_)) | Err(_)) => Err(DestPlanetFailed),
+                                (Err(()), Ok(Ok(()))) => Err(SourcePlanetFailed),
+                                (Err(()), Ok(Err(_)) | Err(_)) => Err(BothPlanetsFailed),
                             },
                         }
                     }
                     //Request completed successfully, but was refued.
-                    Ok(Err(_)) => Ok(Err(MoveResult::DestPlanetRefused)),
+                    Ok(Err(_)) => Ok(Err(DestPlanetRefused)),
                     //Request failed
-                    Err(()) => Err(MoveResultPlanetError::DestPlanetFailed),
+                    Err(()) => Err(DestPlanetFailed),
                 };
                 (dest_planet, result)
             },
