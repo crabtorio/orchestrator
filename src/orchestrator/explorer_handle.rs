@@ -14,14 +14,15 @@ use explorer_common::logged_channel::LoggedChannel;
 use common_game::{
     components::resource::{BasicResourceType, ComplexResourceType},
     logging::{ActorType, Channel as LogChannel, EventType, LogEvent, Participant, Payload},
-    protocols::orchestrator_explorer::{
-        ExplorerToOrchestrator, ExplorerToOrchestratorKind, OrchestratorToExplorer,
+    protocols::{
+        orchestrator_explorer::{
+            ExplorerToOrchestrator, ExplorerToOrchestratorKind, OrchestratorToExplorer,
+        },
+        planet_explorer::PlanetToExplorer,
     },
     utils::ID,
 };
 use explorer_common::Bag;
-use luna4::planet::PlanetToExplorer;
-
 pub type Channel = LoggedChannel<OrchestratorToExplorer, ExplorerToOrchestrator<Bag>>;
 
 pub struct ExplorerHandle<State> {
@@ -344,7 +345,7 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
             ) {
                 use MoveResult::*;
                 use MoveResultPlanetError::*;
-                
+
                 let result = match dest_planet
                     .incoming_explorer_request(self.id, self.state.planet_sender.clone())
                 {

@@ -14,8 +14,8 @@ use common_game::{
 };
 
 use crate::orchestrator::{
-    ai::AiType::{self, RichardRandom},
     Command::{self, *},
+    ai::AiType::{self, RichardRandom},
 };
 
 pub struct Shell {
