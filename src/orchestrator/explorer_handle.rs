@@ -474,9 +474,7 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
             Ok(())
         }
     }
-}
 
-impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
     /// This method just returns the current planet of the explorer, as is known by the Orchestrator
     pub fn get_current_planet(&self) -> ID {
         self.state.location.planet.id
