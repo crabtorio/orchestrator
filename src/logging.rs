@@ -6,5 +6,6 @@ pub fn init() {
     Builder::new()
         .filter(None, LevelFilter::Off)
         .filter(Some("orchestrator"), LevelFilter::Debug)
+        .filter(Some("explorer_common"), LevelFilter::Debug)
         .init();
 }
