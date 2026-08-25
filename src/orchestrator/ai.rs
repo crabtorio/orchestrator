@@ -43,7 +43,7 @@ impl Ai for RichardRandom {
                 const ASTEROID_WEIGHT: i32 = 1;
 
                 while runflag.load(Relaxed) {
-                    let target: ID = rand::random_range(start..end);
+                    let target: ID = rand::random_range(start-1..=end);
                     let action: i32 =
                         rand::random_range(1..=(NOTHING_WEIGHT + SUN_WEIGHT + ASTEROID_WEIGHT));
                     log::trace!("AI: RichardRandom rolled {} on {}", action, target);
