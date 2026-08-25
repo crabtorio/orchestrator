@@ -45,7 +45,7 @@ impl Ai for RichardRandom {
                 while runflag.load(Relaxed) {
                     let target: ID = rand::random_range(start..end);
                     let action: i32 =
-                        rand::random_range(1..(NOTHING_WEIGHT + SUN_WEIGHT + ASTEROID_WEIGHT));
+                        rand::random_range(1..=(NOTHING_WEIGHT + SUN_WEIGHT + ASTEROID_WEIGHT));
                     log::trace!("AI: RichardRandom rolled {} on {}", action, target);
 
                     let mut lock = ai_queue.lock().unwrap();
