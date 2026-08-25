@@ -302,7 +302,7 @@ impl<'a> ExplorerHandle<Born<Unplaced>> {
     /// If the explorer is placed correctly, return a placed explorer.
     /// Otherwise, try to return the this explorer.
     /// If this too, is impossible, return ()
-    pub fn place(self, dest_planet: &'a PlanetHandle) -> PlacedResult<'a> {
+    pub fn place(self, dest_planet: &'a PlanetHandle) -> PlacedResult<'a, Self> {
         let check_in_result =
             dest_planet.incoming_explorer_request(self.id, self.state.planet_sender.clone());
         match check_in_result {
@@ -367,14 +367,14 @@ impl<'a> ExplorerHandle<Born<Unplaced>> {
 impl<'a> ExplorerHandle<Unborn> {
     pub fn spawn_in_place<ExplorerImplementation: Explorer>(
         self,
-        initial_planet: &PlanetHandle,
-    ) -> PlacedResult {
+        initial_planet: &'a PlanetHandle,
+    ) -> PlacedResult<'a, Self> {
         let (tx_explorer, rx_explorer) = crossbeam_channel::unbounded();
         let (tx_orchestrator, rx_orchestrator) = crossbeam_channel::unbounded();
         let (tx_planet, rx_planet) = crossbeam_channel::unbounded();
 
         //Perform check-in
-        match initial_planet.incoming_explorer_request(explorer_id, tx_planet.clone()) {
+        match initial_planet.incoming_explorer_request(self.id, tx_planet.clone()) {
             //Do nothing
             Ok(Ok(())) => (),
             //Return that the planet was not interested
@@ -387,19 +387,21 @@ impl<'a> ExplorerHandle<Unborn> {
             Err(()) => return PlacedResult::DestinationPlanetFailed(self),
         };
 
+        let initial_planet_id = initial_planet.id;
+        let planet_tx_explorer = initial_planet.tx_explorer.clone();
         let handle = thread::spawn(move || {
             ExplorerImplementation::new(
                 self.id as ID,
                 Bag::new(),
-                initial_planet.id,
+                initial_planet_id,
                 LoggedChannel::new(
                     rx_planet,
-                    initial_planet.tx_explorer.clone(),
-                    format!("Planet {}", planet.id),
+                    planet_tx_explorer,
+                    format!("Planet {}", initial_planet_id),
                 ),
                 LoggedChannel::new(
-                    rx_explorer,
-                    tx_orchestrator,
+                    rx_orchestrator,
+                    tx_explorer,
                     format!("Explorer {}", self.id),
                 ),
             )
@@ -407,8 +409,8 @@ impl<'a> ExplorerHandle<Unborn> {
         });
 
         let channel = Channel::new(
-            rx_orchestrator,
-            tx_explorer,
+            rx_explorer,
+            tx_orchestrator,
             format!("Explorer {}", self.id),
         );
         if let Ok(_) = channel.send_and_check_ack(
@@ -428,14 +430,14 @@ impl<'a> ExplorerHandle<Unborn> {
                     handle: handle,
                     planet_sender: tx_planet,
                     location: Placed {
-                        planet,
-                        _run_state: Stopped,
+                        planet: initial_planet,
+                        _run_state: Paused,
                     },
                 },
             };
             PlacedResult::Placed(born_explorer_handle)
         } else {
-            ExplorerFailed
+            PlacedResult::ExplorerFailed
         }
     }
 }

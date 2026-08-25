@@ -645,7 +645,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 [[package]]
 name = "ml-explorer"
 version = "0.1.0"
-source = "git+https://github.com/crabtorio/ml-explorer.git?branch=main#715f7cfcb151ec5906c532b50d12d03d1f7588de"
+source = "git+https://github.com/crabtorio/ml-explorer.git?branch=main#a8ac29c2e2814a4d6fad43e1bc24e257c4f25f57"
 dependencies = [
  "common-game",
  "crossbeam-channel",

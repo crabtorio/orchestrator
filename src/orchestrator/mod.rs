@@ -339,7 +339,9 @@ impl Orchestrator {
                     vendor,
                     destination_planet,
                 } => explorer_handles.take_explorer(explorer_id, |maybe_explorer| {
-                    match (planet_handles.get(&destination_planet), maybe_explorer) {
+                    let maybe_planet = planet_handles.get(&destination_planet);
+
+                    match (maybe_planet, maybe_explorer) {
                         (Some(planet_handle), Some(GenericExplorer::Unborn(explorer_handle))) => {
                             use explorer_handle::PlacedResult::*;
 
@@ -352,15 +354,15 @@ impl Orchestrator {
 
                             match place_result {
                                 Placed(explorer_handle) => {
-                                    Some(GenericExplorer::Stopped(stopped_explorer))
+                                    Some(GenericExplorer::Stopped(explorer_handle))
                                 }
                                 DestinationPlanetRefused { handle, reason } => {
                                     println!("Could not place explorer, planet refused: {reason}");
-                                    Some(GenericExplorer::Unplaced(handle))
+                                    Some(GenericExplorer::Unborn(handle))
                                 }
                                 DestinationPlanetFailed(handle) => {
                                     println!("Could not place explorer, planet failed");
-                                    Some(GenericExplorer::Unplaced(handle))
+                                    Some(GenericExplorer::Unborn(handle))
                                 }
                                 ExplorerFailed => {
                                     println!("Explorer failed during initialization");
@@ -381,7 +383,7 @@ impl Orchestrator {
                             println!("Explorer not found");
                             None
                         }
-                        (Some(_), None) => {
+                        (None, Some(_)) => {
                             println!("Planet not found");
                             None
                         }
