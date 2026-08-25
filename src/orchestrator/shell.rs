@@ -129,20 +129,16 @@ fn parse_command(mut input: String) -> Result<Command, String> {
             }
         })),
         "resetexplorer" => Ok({
-            if let (Some(explorer_id), Some(planet_id)) = (arguments.get(0), arguments.get(1)) {
+            if let Some(explorer_id) = arguments.get(0) {
                 let explorer_id = if *explorer_id == "0" {
                     super::ExplorerID::First
                 } else {
                     super::ExplorerID::Second
                 };
-                let planet_id = planet_id.parse::<ID>().map_err(|err| err.to_string())?;
-                Command::ResetExplorer {
-                    explorer_id,
-                    planet_id,
-                }
+                Command::ResetExplorer(explorer_id)
             } else {
                 return Err(format!(
-                    "Not enough arguments given, expected <explorer_id,planet_id>"
+                    "Not enough arguments given, expected <explorer_id>"
                 ));
             }
         }),
