@@ -90,21 +90,6 @@ impl<'a> ExplorerSet<'a> {
             .collect();
     }
 
-    pub fn bulk_unborn_op<
-        F: Fn(ExplorerID, UnbornExplorerHandle) -> Option<GenericExplorer<'a>>,
-    >(
-        &mut self,
-        op: F,
-    ) {
-        self.bulk_op(|key, explorer| {
-            if let GenericExplorer::Unborn(explorer) = explorer {
-                op(key, explorer)
-            } else {
-                Some(explorer)
-            }
-        });
-    }
-
     pub fn bulk_paused_op<
         F: Fn(ExplorerID, PausedExploererHandle<'a>) -> Option<GenericExplorer<'a>>,
     >(
