@@ -175,7 +175,7 @@ pub fn init() {
                         paint(
                             channel_code(ev.channel),
                             false,
-                            &format!("[{}/{}]", ev.event_type, ev.channel)
+                            &format!("[{}]", ev.event_type)
                         ),
                         ev.payload,
                     )
