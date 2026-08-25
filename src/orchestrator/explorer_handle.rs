@@ -214,15 +214,8 @@ impl<Any> ExplorerHandle<Born<Any>> {
             }
             other => {
                 let expected = ExplorerToOrchestratorKind::BagContentResponse;
-                self.make_inbound_msg_log_event(
-                    LogChannel::Error,
-                    Payload::from([
-                        ("Message".into(), "Recieved invalid response".into()),
-                        ("Expected".into(), format!("{expected:?}")),
-                        ("Got".into(), format!("{other:?}")),
-                    ]),
-                )
-                .emit();
+                self.make_unexpected_response_log_event(&expected, &other)
+                    .emit();
                 Err(())
             }
         }
@@ -466,15 +459,8 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
                 }
                 _ => {
                     let expected = ExplorerToOrchestratorKind::MovedToPlanetResult;
-                    self.make_inbound_msg_log_event(
-                        LogChannel::Error,
-                        Payload::from([
-                            ("Message".into(), "Recieved invalid response".into()),
-                            ("Expected".into(), format!("{expected:?}")),
-                            ("Got".into(), format!("{:?}", val)),
-                        ]),
-                    )
-                    .emit();
+                    self.make_unexpected_response_log_event(&expected, &val)
+                        .emit();
                     Err(MoveResultError::ExplorerFailed)
                 }
             },
@@ -525,7 +511,10 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
                 LogChannel::Error,
                 Payload::from([
                     ("Message".into(), err_message.into()),
-                    ("Expected".into(), format!("{}", self.id)),
+                    (
+                        "Expected".into(),
+                        format!("{}", self.state.location.planet.id),
+                    ),
                     ("Got".into(), format!("{planet_id}")),
                 ]),
             )
@@ -557,15 +546,8 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
             }
             other => {
                 let expected = ExplorerToOrchestratorKind::SupportedCombinationResult;
-                self.make_inbound_msg_log_event(
-                    LogChannel::Error,
-                    Payload::from([
-                        ("Message".into(), "Recieved invalid response".into()),
-                        ("Expected".into(), format!("{expected:?}")),
-                        ("Got".into(), format!("{other:?}")),
-                    ]),
-                )
-                .emit();
+                self.make_unexpected_response_log_event(&expected, &other)
+                    .emit();
                 Err(())
             }
         }
@@ -587,15 +569,8 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
             }
             other => {
                 let expected = ExplorerToOrchestratorKind::SupportedResourceResult;
-                self.make_inbound_msg_log_event(
-                    LogChannel::Error,
-                    Payload::from([
-                        ("Message".into(), "Recieved invalid response".into()),
-                        ("Expected".into(), format!("{expected:?}")),
-                        ("Got".into(), format!("{other:?}")),
-                    ]),
-                )
-                .emit();
+                self.make_unexpected_response_log_event(&expected, &other)
+                    .emit();
                 Err(())
             }
         }
@@ -656,15 +631,8 @@ impl<'a> ExplorerHandle<Born<Placed<'a, Paused>>> {
             }
             other => {
                 let expected = ExplorerToOrchestratorKind::CombineResourceResponse;
-                self.make_inbound_msg_log_event(
-                    LogChannel::Error,
-                    Payload::from([
-                        ("Message".into(), "Recieved invalid response".into()),
-                        ("Expected".into(), format!("{expected:?}")),
-                        ("Got".into(), format!("{other:?}")),
-                    ]),
-                )
-                .emit();
+                self.make_unexpected_response_log_event(&expected, &other)
+                    .emit();
                 Err(())
             }
         }
