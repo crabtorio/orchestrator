@@ -1,8 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
-    format,
-    thread::{self, JoinHandle},
-    vec,
+    collections::{HashMap, HashSet}, format, ops::Not, thread::{self, JoinHandle}, vec,
 };
 
 use crate::{
@@ -166,8 +163,32 @@ impl<Any> ExplorerHandle<Any> {
 }
 
 impl<Any> ExplorerHandle<Born<Any>> {
+    /// A leniant version of send_and_check_ack, will check for one extra response before returning err(), dropping all responses.
+    fn send_and_check_ack_leniant(
+        &self,
+        send_val: OrchestratorToExplorer,
+        check_val: ExplorerToOrchestratorKind,
+    ) -> Result<(), ()> {
+        let recieve_and_check_match =
+            || Ok(check_val == (self.state.channel.recv().map_err(|_| {})?).into());
+
+        self.state.channel.send(send_val).map_err(|_| {})?;
+        if recieve_and_check_match()? {
+            Ok(())
+        } else {
+            self.make_inbound_msg_log_event(LogChannel::Trace, Payload::from([
+                ("Message".into(),"Dropped: Previous inbound message did not match once ".into())
+            ])).emit();
+            match recieve_and_check_match() {
+                Ok(false) => Err(()),
+                Ok(true) => Ok(()),
+                Err(_) => Err(()),
+            }
+        }
+    }
+
     pub fn kill(self) -> Result<JoinHandle<()>, ()> {
-        if let Ok(_) = self.state.channel.send_and_check_ack(
+        if let Ok(_) = self.send_and_check_ack_leniant(
             OrchestratorToExplorer::KillExplorer,
             ExplorerToOrchestratorKind::KillExplorerResult,
         ) {
@@ -453,10 +474,8 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
     }
 
     /// Reset the explorer's AI and send it to `dest_planet`.
-    pub fn reset(
-        self
-    ) -> Result<ExplorerHandle<Born<Placed<'a, Paused>>>, ()> {
-        if let Ok(_) = self.state.channel.send_and_check_ack(
+    pub fn reset(self) -> Result<ExplorerHandle<Born<Placed<'a, Paused>>>, ()> {
+        if let Ok(_) = self.send_and_check_ack_leniant(
             OrchestratorToExplorer::ResetExplorerAI,
             ExplorerToOrchestratorKind::ResetExplorerAIResult,
         ) {
@@ -652,7 +671,7 @@ impl<'a> ExplorerHandle<Born<Placed<'a, Paused>>> {
 
 impl<'a> ExplorerHandle<Born<Placed<'a, Running>>> {
     pub fn stop(self) -> Result<ExplorerHandle<Born<Placed<'a, Paused>>>, ()> {
-        if let Ok(_) = self.state.channel.send_and_check_ack(
+        if let Ok(_) = self.send_and_check_ack_leniant(
             OrchestratorToExplorer::StopExplorerAI,
             ExplorerToOrchestratorKind::StopExplorerAIResult,
         ) {

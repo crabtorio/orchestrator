@@ -238,7 +238,7 @@ impl Orchestrator {
 
             fn reset_generic_explorer<'a>(
                 id: ExplorerID,
-                explorer: GenericExplorer<'a>
+                explorer: GenericExplorer<'a>,
             ) -> Option<GenericExplorer<'a>> {
                 let reset_result = match explorer {
                     //Unborn explorers cannot be reset.
@@ -459,9 +459,7 @@ impl Orchestrator {
 
                     explorer_handles.take_explorer(explorer_id, |maybe_explorer| {
                         match maybe_explorer {
-                            Some(explorer) => {
-                                reset_generic_explorer(explorer_id, explorer)
-                            }
+                            Some(explorer) => reset_generic_explorer(explorer_id, explorer),
                             None => {
                                 println!("Explorer not found");
                                 None
