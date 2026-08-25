@@ -7,6 +7,7 @@ use crate::orchestrator::ai::AiType::RichardRandom as RichardRandomType;
 use crate::orchestrator::ai::{Ai, AiArgs, AiType, RichardRandom};
 use crate::orchestrator::explorer_handle::{
     ExplorerSet, GenericExplorer, MoveResult, MoveResultError, RunningExploererHandle,
+    UnbornExplorerHandle,
 };
 use crate::orchestrator::shell::Shell;
 use common_game::components::asteroid::Asteroid;
@@ -229,10 +230,12 @@ impl Orchestrator {
             };
 
             //Helper functions
-            fn kill_generic_explorer(id: ExplorerID, explorer: GenericExplorer) {
+            fn kill_generic_explorer(
+                id: ExplorerID,
+                explorer: GenericExplorer,
+            ) -> UnbornExplorerHandle {
                 let join_handle = match explorer {
-                    //Unborn explorers just get deleted
-                    GenericExplorer::Unborn(_explorer_handle) => return,
+                    GenericExplorer::Unborn(_explorer_handle) => return explorer_handle::new(id),
                     //The otheres must go through the kill procedure
                     GenericExplorer::Unplaced(explorer_handle) => explorer_handle.kill(),
                     GenericExplorer::Running(explorer_handle) => explorer_handle.kill(),
@@ -245,6 +248,7 @@ impl Orchestrator {
                     }
                     Err(_) => println!("An error occured while killing explorer {id}"),
                 };
+                explorer_handle::new(id)
             }
 
             fn reset_generic_explorer(
@@ -328,8 +332,7 @@ impl Orchestrator {
                     })
                 }
                 KillExplorers => explorer_handles.bulk_op(|id, explorer| {
-                    kill_generic_explorer(id, explorer);
-                    None
+                    Some(GenericExplorer::Unborn(kill_generic_explorer(id, explorer)))
                 }),
                 ResetExplorers => {
                     explorer_handles.bulk_op(|id, explorer| reset_generic_explorer(id, explorer))
@@ -450,10 +453,15 @@ impl Orchestrator {
                 KillExplorer(explorer_id) => {
                     explorer_handles.take_explorer(explorer_id, |maybe_explorer| {
                         match maybe_explorer {
-                            Some(explorer) => kill_generic_explorer(explorer_id, explorer),
-                            None => println!("Explorer not found"),
+                            Some(explorer) => Some(GenericExplorer::Unborn(kill_generic_explorer(
+                                explorer_id,
+                                explorer,
+                            ))),
+                            None => {
+                                println!("Explorer not found");
+                                None
+                            }
                         }
-                        None
                     })
                 }
                 ResetExplorer(explorer_id) => {
