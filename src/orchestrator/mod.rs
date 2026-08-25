@@ -106,7 +106,7 @@ pub enum Command {
     ResumeExplorer(ExplorerID),
     StopExplorer(ExplorerID),
     KillExplorer(ExplorerID),
-    ResetExplorer{
+    ResetExplorer {
         explorer_id: ExplorerID,
         planet_id: ID,
     },
@@ -236,7 +236,7 @@ impl Orchestrator {
                 explorer_handle::new(id)
             }
 
-            fn reset_generic_explorer<'a> (
+            fn reset_generic_explorer<'a>(
                 id: ExplorerID,
                 explorer: GenericExplorer<'a>,
                 destination: &'a PlanetHandle,
@@ -446,18 +446,23 @@ impl Orchestrator {
                         }
                     })
                 }
-                ResetExplorer{ explorer_id, planet_id } => {
+                ResetExplorer {
+                    explorer_id,
+                    planet_id,
+                } => {
                     let planet_handler = match planet_handles.get(&planet_id) {
                         Some(planet_handler) => planet_handler,
                         None => {
                             println!("Planet not found");
-                            continue
-                        },
+                            continue;
+                        }
                     };
 
                     explorer_handles.take_explorer(explorer_id, |maybe_explorer| {
                         match maybe_explorer {
-                            Some(explorer) => reset_generic_explorer(explorer_id, explorer,planet_handler),
+                            Some(explorer) => {
+                                reset_generic_explorer(explorer_id, explorer, planet_handler)
+                            }
                             None => {
                                 println!("Explorer not found");
                                 None
