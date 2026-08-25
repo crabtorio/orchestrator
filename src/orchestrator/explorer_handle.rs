@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet}, format, ops::Not, thread::{self, JoinHandle}, vec,
+    collections::{HashMap, HashSet}, format, thread::{self, JoinHandle}, vec,
 };
 
 use crate::{
@@ -474,7 +474,7 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
     }
 
     /// Reset the explorer's AI and send it to `dest_planet`.
-    pub fn reset(self) -> Result<ExplorerHandle<Born<Placed<'a, Paused>>>, ()> {
+    pub fn reset(self) -> Result<PausedExploererHandle<'a>, ()> {
         if let Ok(_) = self.send_and_check_ack_leniant(
             OrchestratorToExplorer::ResetExplorerAI,
             ExplorerToOrchestratorKind::ResetExplorerAIResult,
@@ -575,7 +575,7 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
 }
 
 impl<'a> ExplorerHandle<Born<Placed<'a, Paused>>> {
-    pub fn resume(self) -> Result<ExplorerHandle<Born<Placed<'a, Running>>>, ()> {
+    pub fn resume(self) -> Result<RunningExploererHandle<'a>, ()> {
         if let Ok(_) = self.state.channel.send_and_check_ack(
             OrchestratorToExplorer::StartExplorerAI,
             ExplorerToOrchestratorKind::StartExplorerAIResult,
@@ -670,7 +670,7 @@ impl<'a> ExplorerHandle<Born<Placed<'a, Paused>>> {
 }
 
 impl<'a> ExplorerHandle<Born<Placed<'a, Running>>> {
-    pub fn stop(self) -> Result<ExplorerHandle<Born<Placed<'a, Paused>>>, ()> {
+    pub fn stop(self) -> Result<PausedExploererHandle<'a>, ()> {
         if let Ok(_) = self.send_and_check_ack_leniant(
             OrchestratorToExplorer::StopExplorerAI,
             ExplorerToOrchestratorKind::StopExplorerAIResult,
