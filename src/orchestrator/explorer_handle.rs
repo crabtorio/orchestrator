@@ -453,11 +453,8 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
     }
 
     /// Reset the explorer's AI and send it to `dest_planet`.
-    /// No adjacency checks are carried out: the explorer is unconditionally
-    /// moved to `dest_planet`, regardless of where it currently is.
     pub fn reset(
-        mut self,
-        dest_planet: &'a PlanetHandle,
+        self
     ) -> Result<ExplorerHandle<Born<Placed<'a, Paused>>>, ()> {
         if let Ok(_) = self.state.channel.send_and_check_ack(
             OrchestratorToExplorer::ResetExplorerAI,
@@ -468,9 +465,6 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
                 Payload::from([("Message".into(), "Reset".into())]),
             )
             .emit();
-
-            self.move_to_planet_intnl(Some(dest_planet))
-                .map_err(|_| ())?;
 
             Ok(ExplorerHandle {
                 id: self.id,

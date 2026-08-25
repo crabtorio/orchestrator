@@ -238,8 +238,7 @@ impl Orchestrator {
 
             fn reset_generic_explorer<'a>(
                 id: ExplorerID,
-                explorer: GenericExplorer<'a>,
-                destination: &'a PlanetHandle,
+                explorer: GenericExplorer<'a>
             ) -> Option<GenericExplorer<'a>> {
                 let reset_result = match explorer {
                     //Unborn explorers cannot be reset.
@@ -247,8 +246,8 @@ impl Orchestrator {
                         return Some(GenericExplorer::Unborn(explorer_handle));
                     }
                     //All the others can
-                    GenericExplorer::Running(explorer_handle) => explorer_handle.reset(destination),
-                    GenericExplorer::Stopped(explorer_handle) => explorer_handle.reset(destination),
+                    GenericExplorer::Running(explorer_handle) => explorer_handle.reset(),
+                    GenericExplorer::Stopped(explorer_handle) => explorer_handle.reset(),
                 };
                 match reset_result {
                     Ok(new_handle) => Some(GenericExplorer::Stopped(new_handle)),
@@ -461,7 +460,7 @@ impl Orchestrator {
                     explorer_handles.take_explorer(explorer_id, |maybe_explorer| {
                         match maybe_explorer {
                             Some(explorer) => {
-                                reset_generic_explorer(explorer_id, explorer, planet_handler)
+                                reset_generic_explorer(explorer_id, explorer)
                             }
                             None => {
                                 println!("Explorer not found");
