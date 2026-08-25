@@ -549,7 +549,7 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
                         return Err(MoveResultError::ExplorerFailed);
                     }
 
-                    self.state.location.planet = expected_planet;
+                    self.state.location.planet = dest_planet;
 
                     self.make_internal_log_event(
                         LogChannel::Error,
