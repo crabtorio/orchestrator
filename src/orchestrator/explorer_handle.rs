@@ -241,20 +241,6 @@ impl<'a> ExplorerHandle<Unborn> {
         let (tx_orchestrator, rx_orchestrator) = crossbeam_channel::unbounded();
         let (tx_planet, rx_planet) = crossbeam_channel::unbounded();
 
-        //Perform check-in
-        match initial_planet.incoming_explorer_request(self.id, tx_planet.clone()) {
-            //Do nothing
-            Ok(Ok(())) => (),
-            //Return that the planet was not interested
-            Ok(Err(errmsg)) => {
-                return PlacedResult::DestinationPlanetRefused {
-                    handle: self,
-                    reason: errmsg,
-                };
-            }
-            Err(()) => return PlacedResult::DestinationPlanetFailed(self),
-        };
-
         let initial_planet_id = initial_planet.id;
         let planet_tx_explorer = initial_planet.tx_explorer.clone();
         let handle = thread::spawn(move || {
@@ -275,6 +261,20 @@ impl<'a> ExplorerHandle<Unborn> {
             )
             .run();
         });
+
+        //Perform check-in
+        match initial_planet.incoming_explorer_request(self.id, tx_planet.clone()) {
+            //Do nothing
+            Ok(Ok(())) => (),
+            //Return that the planet was not interested
+            Ok(Err(errmsg)) => {
+                return PlacedResult::DestinationPlanetRefused {
+                    handle: self,
+                    reason: errmsg,
+                };
+            }
+            Err(()) => return PlacedResult::DestinationPlanetFailed(self),
+        };
 
         let channel = Channel::new(
             rx_explorer,
