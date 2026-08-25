@@ -505,18 +505,18 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
             },
         );
 
-        let move_result = self.state.channel.send(match check_in_out_result {
+        let (dest_planet,new_sender) = match check_in_out_result {
             //If we are moving and if the check in/out went out correctly.
-            Some((planet, Ok(Ok(())))) => OrchestratorToExplorer::MoveToPlanet {
-                sender_to_new_planet: Some(planet.tx_explorer.clone()),
-                planet_id: planet.id,
-            },
-            //Othrewiese
-            _ => OrchestratorToExplorer::MoveToPlanet {
-                sender_to_new_planet: None,
-                planet_id: self.state.location.planet.id,
-            },
-        });
+            Some((planet, Ok(Ok(())))) => (planet,Some(planet.tx_explorer.clone())),
+            //Othrewiese we stay put
+            _ =>  (self.state.location.planet,None),
+        };
+
+        let move_result = self.state.channel.send(
+            OrchestratorToExplorer::MoveToPlanet {
+                sender_to_new_planet: new_sender,
+                planet_id: dest_planet.id,
+            });
 
         if move_result.is_err() {
             return Err(MoveResultError::ExplorerFailed);
@@ -532,9 +532,7 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
                     self.ensure_id_matches(explorer_id)
                         .map_err(|_| MoveResultError::ExplorerFailed)?;
 
-                    let expected_planet = maybe_dest_planet.unwrap_or(self.state.location.planet);
-
-                    if expected_planet.id != planet_id_resp {
+                    if dest_planet.id != planet_id_resp {
                         self.make_inbound_msg_log_event(
                             LogChannel::Error,
                             Payload::from([
@@ -542,7 +540,7 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
                                     "Message".into(),
                                     "Explorer returned unexpected planet_id after move".into(),
                                 ),
-                                ("Expected".into(), format!("{}", expected_planet.id)),
+                                ("Expected".into(), format!("{}", dest_planet.id)),
                                 ("Got".into(), format!("{planet_id_resp}")),
                             ]),
                         )
