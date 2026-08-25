@@ -84,7 +84,7 @@ checksum = "82f6aeea286b8eb4dd3431a1be1b59d290ace00f5bfd8e2a159bc2a05e2c1667"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -126,9 +126,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.4.3"
+version = "1.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "509591b7bcd67f4ef775afad7662703b4935daaa6ec0e5605cfb1090b32a2b6d"
+checksum = "0ad534f4357a5264cce5019c989cf66a4f0dc4e0d1b1d15f8aacec0ff7360273"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -184,7 +184,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -398,11 +398,12 @@ dependencies = [
 [[package]]
 name = "explorer-common"
 version = "0.1.0"
-source = "git+https://github.com/crabtorio/explorer-common?branch=main#2927ccbcbb10ff3c7368bf0e5e233bb08806a375"
+source = "git+https://github.com/crabtorio/explorer-common?branch=main#236d11faf69208123b38b25ae56ddcf15666d1d7"
 dependencies = [
  "common-game",
  "crossbeam-channel",
  "log",
+ "planet",
 ]
 
 [[package]]
@@ -618,9 +619,9 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "log"
-version = "0.4.33"
+version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
+checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "luna4"
@@ -644,7 +645,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 [[package]]
 name = "ml-explorer"
 version = "0.1.0"
-source = "git+https://github.com/crabtorio/ml-explorer.git?branch=main#fce1c96c26187c8cea814e5b11add8bc221ae903"
+source = "git+https://github.com/crabtorio/ml-explorer.git?branch=main#715f7cfcb151ec5906c532b50d12d03d1f7588de"
 dependencies = [
  "common-game",
  "crossbeam-channel",
@@ -775,6 +776,15 @@ name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
+
+[[package]]
+name = "planet"
+version = "0.1.0"
+source = "git+https://github.com/crabtorio/crabtorio?branch=main#2ded7289d6f26954119b81651fd7d019098e1d7d"
+dependencies = [
+ "common-game",
+ "crossbeam-channel",
+]
 
 [[package]]
 name = "portable-atomic"
@@ -997,7 +1007,7 @@ checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -1103,9 +1113,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "3.0.3"
+version = "3.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53e9bae58849f64dfa4f5d5ae372c8341f7305f82a3868709269343628b659a3"
+checksum = "e6275cddf4610d1775e6d1fe9469b2e77d0f39fd98fb7450901b821e0c53649f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1129,7 +1139,7 @@ checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]

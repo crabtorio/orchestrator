@@ -18,6 +18,7 @@ use common_game::{
     protocols::{orchestrator_planet, planet_explorer},
     utils::ID,
 };
+use explorer_common::Bag;
 use orchestrator_planet::{OrchestratorToPlanet, PlanetToOrchestrator};
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -95,17 +96,23 @@ impl std::fmt::Display for ExplorerID {
 
 pub enum Command {
     // Explorer
-    StartExplorers,
     ResumeExplorers,
     PauseExplorers,
     KillExplorers,
     ResetExplorers,
-    StartExplorer(ExplorerID),
+    StartExplorer {
+        explorer_id: ExplorerID,
+        vendor: ExplorerVendor,
+        destination_planet: PlanetHandle,
+    },
     ResumeExplorer(ExplorerID),
     StopExplorer(ExplorerID),
     KillExplorer(ExplorerID),
     ResetExplorer(ExplorerID),
-    MoveExplorer { planet_id: ID, explorer: ExplorerID },
+    MoveExplorer {
+        planet_id: ID,
+        explorer: ExplorerID,
+    },
     // Manual mode explorer
     CurrentPlanetRequest(ExplorerID),
     SupportedResourceRequest(ExplorerID),
@@ -171,22 +178,16 @@ impl Orchestrator {
         let mut explorer_handles = ExplorerSet(match &self.explorers {
             Explorers::One(explorer_vendor) => HashMap::from([(
                 ExplorerID::First,
-                GenericExplorer::Unborn(explorer_handle::new(ExplorerID::First, *explorer_vendor)),
+                GenericExplorer::Unborn(explorer_handle::new(ExplorerID::First)),
             )]),
             Explorers::Two(explorer_vendor1, explorer_vendor2) => HashMap::from([
                 (
                     ExplorerID::First,
-                    GenericExplorer::Unborn(explorer_handle::new(
-                        ExplorerID::First,
-                        *explorer_vendor1,
-                    )),
+                    GenericExplorer::Unborn(explorer_handle::new(ExplorerID::First)),
                 ),
                 (
                     ExplorerID::Second,
-                    GenericExplorer::Unborn(explorer_handle::new(
-                        ExplorerID::Second,
-                        *explorer_vendor2,
-                    )),
+                    GenericExplorer::Unborn(explorer_handle::new(ExplorerID::Second)),
                 ),
             ]),
         });
@@ -308,7 +309,6 @@ impl Orchestrator {
                         println!("id: {}", handle.id);
                     }
                 }
-                StartExplorers => todo!(),
                 ResumeExplorers => {
                     explorer_handles.bulk_paused_op(|key, explorer| match explorer.resume() {
                         Ok(explorer) => Some(GenericExplorer::Running(explorer)),
@@ -334,31 +334,61 @@ impl Orchestrator {
                 ResetExplorers => {
                     explorer_handles.bulk_op(|id, explorer| reset_generic_explorer(id, explorer))
                 }
-                StartExplorer(explorer_id) => {
-                    explorer_handles.take_explorer(explorer_id, |maybe_explorer| {
-                        match maybe_explorer {
-                            Some(GenericExplorer::Unborn(explorer_handle)) => {
-                                match explorer_handle.init() {
-                                    Ok(explorer_handle) => {
-                                        Some(GenericExplorer::Unplaced(explorer_handle))
-                                    }
-                                    Err(_) => {
-                                        println!("Internal error while initializing the explorer");
-                                        None
+                StartExplorer {
+                    explorer_id,
+                    vendor,
+                    destination_planet,
+                } => explorer_handles.take_explorer(explorer_id, |maybe_explorer| {
+                    match maybe_explorer {
+                        Some(GenericExplorer::Unborn(explorer_handle)) => {
+                            use explorer_handle::PlacedResult::*;
+                            use explorer_handle::PlacedResultErr::*;
+
+                            //TODO fill this in
+                            let vendor_runtime = match vendor {
+                                ExplorerVendor::Lorenzo => todo!(),
+                                ExplorerVendor::Alessio => todo!(),
+                                ExplorerVendor::Luca => todo!(),
+                            };
+
+                            match explorer_handle.spawn(vendor_runtime) {
+                                Ok(explorer_handle) => {
+                                    match explorer_handle.place(&destination_planet) {
+                                        Ok(Placed(stopped_explorer)) => {
+                                            Some(GenericExplorer::Stopped(stopped_explorer))
+                                        }
+                                        Ok(DestinationPlanetRefused { handle, reason }) => {
+                                            println!(
+                                                "Could not place explorer, planet refused: {reason}"
+                                            );
+                                            Some(GenericExplorer::Unplaced(handle))
+                                        }
+                                        Err(DestinationPlanetFailed(handle)) => {
+                                            println!("Could not place explorer, planet failed");
+                                            Some(GenericExplorer::Unplaced(handle))
+                                        }
+                                        Err(ExplorerFailed) => {
+                                            println!("Explorer failed during initialization");
+                                            None
+                                        }
                                     }
                                 }
-                            }
-                            Some(_) => {
-                                println!("This explorer has already been initialized");
-                                None
-                            }
-                            None => {
-                                println!("Explorer not found");
-                                None
+                                Err(_) => {
+                                    println!("Explorer failed during initialization");
+                                    None
+                                }
                             }
                         }
-                    })
-                }
+                        Some(_) => {
+                            println!("This explorer is already running");
+                            None
+                        }
+                        None => {
+                            println!("Explorer not found");
+                            None
+                        }
+                    }
+                }),
                 ResumeExplorer(explorer_id) => {
                     explorer_handles.take_explorer(explorer_id, |maybe_explorer| {
                         match maybe_explorer {

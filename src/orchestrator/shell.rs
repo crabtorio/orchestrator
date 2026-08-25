@@ -64,7 +64,6 @@ fn parse_command(mut input: String) -> Result<Command, String> {
     let arguments = &parts[1..];
 
     match command {
-        "startexplorers" => Ok(StartExplorers),
         "stopexplorers" => Ok(PauseExplorers),
         "killexplorers" => Ok(KillExplorers),
         "resetexplorers" => Ok(ResetExplorers),

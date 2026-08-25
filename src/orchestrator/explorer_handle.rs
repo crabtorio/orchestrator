@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet},
     format,
     thread::{self, JoinHandle},
@@ -7,9 +8,9 @@ use std::{
 
 use crate::{
     galaxy_generator::Galaxy,
-    orchestrator::{ExplorerID, ExplorerVendor, PlanetHandle},
+    orchestrator::{ExplorerID, PlanetHandle},
 };
-use explorer_common::logged_channel::LoggedChannel;
+use explorer_common::{BagContent, Explorer, logged_channel::LoggedChannel};
 
 use common_game::{
     components::resource::{BasicResourceType, ComplexResourceType},
@@ -22,12 +23,10 @@ use common_game::{
     },
     utils::ID,
 };
-use explorer_common::Bag;
-pub type Channel = LoggedChannel<OrchestratorToExplorer, ExplorerToOrchestrator<Bag>>;
+pub type Channel = LoggedChannel<OrchestratorToExplorer, ExplorerToOrchestrator<BagContent>>;
 
 pub struct ExplorerHandle<State> {
     id: ExplorerID,
-    explorer_vendor: ExplorerVendor,
     state: State,
 }
 pub struct Unborn;
@@ -183,6 +182,21 @@ impl<Any> ExplorerHandle<Any> {
             payload,
         )
     }
+
+    fn make_unexpected_response_log_event(
+        &self,
+        expected: &dyn std::fmt::Debug,
+        got: &dyn std::fmt::Debug,
+    ) -> LogEvent {
+        self.make_inbound_msg_log_event(
+            LogChannel::Error,
+            Payload::from([
+                ("Message".into(), "Recieved invalid response".into()),
+                ("Expected".into(), format!("{expected:?}")),
+                ("Got".into(), format!("{got:?}")),
+            ]),
+        )
+    }
 }
 
 impl<Any> ExplorerHandle<Born<Any>> {
@@ -214,7 +228,6 @@ impl<Any> ExplorerHandle<Born<Any>> {
             .emit();
             Ok(ExplorerHandle {
                 id: self.id,
-                explorer_vendor: self.explorer_vendor,
                 state: Born {
                     channel: self.state.channel,
                     handle: self.state.handle,
@@ -227,7 +240,7 @@ impl<Any> ExplorerHandle<Born<Any>> {
         }
     }
 
-    pub fn get_bag_content(&self) -> Result<Bag, ()> {
+    pub fn get_bag_content(&self) -> Result<BagContent, ()> {
         self.state
             .channel
             .send(OrchestratorToExplorer::BagContentRequest)
@@ -275,19 +288,104 @@ impl<Any> ExplorerHandle<Born<Any>> {
     }
 }
 
+pub enum PlacedResult<'a> {
+    DestinationPlanetRefused {
+        handle: UnplacedExplorerHandle,
+        reason: String,
+    },
+    Placed(PausedExploererHandle<'a>),
+}
+
+pub enum PlacedResultErr {
+    ExplorerFailed,
+    DestinationPlanetFailed(UnplacedExplorerHandle),
+}
+impl<'a> ExplorerHandle<Born<Unplaced>> {
+    /// Place the explorer in a planet.
+    /// If the explorer is placed correctly, return a placed explorer.
+    /// Otherwise, try to return the this explorer.
+    /// If this too, is impossible, return ()
+    pub fn place(self, dest_planet: &'a PlanetHandle) -> Result<PlacedResult<'a>, PlacedResultErr> {
+        let check_in_result =
+            dest_planet.incoming_explorer_request(self.id, self.state.planet_sender.clone());
+        match check_in_result {
+            Ok(Ok(())) => {
+                let placed_handle = PausedExploererHandle {
+                    id: self.id,
+                    state: Born {
+                        channel: self.state.channel,
+                        planet_sender: self.state.planet_sender,
+                        handle: self.state.handle,
+                        location: Placed {
+                            planet: dest_planet,
+                            _run_state: Paused,
+                        },
+                    },
+                };
+
+                let channel = &placed_handle.state.channel;
+                let send_to_planet_res = channel.send(OrchestratorToExplorer::MoveToPlanet {
+                    sender_to_new_planet: Some(dest_planet.tx_explorer.clone()),
+                    planet_id: dest_planet.id,
+                });
+                match send_to_planet_res {
+                    Err(_) => return Err(PlacedResultErr::ExplorerFailed),
+                    Ok(()) => match channel.recv() {
+                        Ok(ExplorerToOrchestrator::MovedToPlanetResult {
+                            explorer_id,
+                            planet_id,
+                        }) => {
+                            if placed_handle
+                                .ensure_id_matches(explorer_id)
+                                .and(placed_handle.ensure_planet_matches(planet_id, "err_message"))
+                                .is_err()
+                            {
+                                Err(PlacedResultErr::ExplorerFailed)
+                            } else {
+                                Ok(PlacedResult::Placed(placed_handle))
+                            }
+                        }
+                        Ok(msg) => {
+                            placed_handle
+                                .make_unexpected_response_log_event(
+                                    &ExplorerToOrchestratorKind::MovedToPlanetResult,
+                                    &msg,
+                                )
+                                .emit();
+                            Err(PlacedResultErr::ExplorerFailed)
+                        }
+                        Err(_) => Err(PlacedResultErr::ExplorerFailed),
+                    },
+                }
+            }
+            Ok(Err(reason)) => Ok(PlacedResult::DestinationPlanetRefused {
+                handle: self,
+                reason,
+            }),
+            Err(()) => Err(PlacedResultErr::DestinationPlanetFailed(self)),
+        }
+    }
+}
+
 impl<'a> ExplorerHandle<Unborn> {
-    pub fn init(self) -> Result<ExplorerHandle<Born<Unplaced>>, ()> {
-        let (ex_sender, ex_reciever) = crossbeam_channel::unbounded();
-        let (ox_sender, ox_reciever) = crossbeam_channel::unbounded();
-        let (planet_sender, planet_reciever) = crossbeam_channel::unbounded();
+    pub fn spawn(
+        self,
+        explorer: Box<RefCell<dyn Explorer + Send>>,
+    ) -> Result<ExplorerHandle<Born<Unplaced>>, ()> {
+        let (tx_explorer, rx_explorer) = crossbeam_channel::unbounded();
+        let (tx_orchestrator, rx_orchestrator) = crossbeam_channel::unbounded();
+        let (tx_planet, rx_planet) = crossbeam_channel::unbounded();
 
         let handle = thread::spawn(move || {
-            ex_reciever;
-            ox_sender;
-            planet_reciever;
-            //TODO this whole thing
+            explorer
+                .borrow_mut()
+                .run(rx_planet, rx_explorer, tx_orchestrator);
         });
-        let channel = Channel::new(ox_reciever, ex_sender, format!("Explorer {}", self.id));
+        let channel = Channel::new(
+            rx_orchestrator,
+            tx_explorer,
+            format!("Explorer {}", self.id),
+        );
         if let Ok(_) = channel.send_and_check_ack(
             OrchestratorToExplorer::StartExplorerAI,
             ExplorerToOrchestratorKind::StartExplorerAIResult,
@@ -299,11 +397,10 @@ impl<'a> ExplorerHandle<Unborn> {
             .emit();
             Ok(ExplorerHandle {
                 id: self.id,
-                explorer_vendor: self.explorer_vendor,
                 state: Born {
                     channel,
                     handle: handle,
-                    planet_sender,
+                    planet_sender: tx_planet,
                     location: Unplaced,
                 },
             })
@@ -558,7 +655,6 @@ impl<'a> ExplorerHandle<Born<Placed<'a, Paused>>> {
             .emit();
             Ok(ExplorerHandle {
                 id: self.id,
-                explorer_vendor: self.explorer_vendor,
                 state: Born {
                     channel: self.state.channel,
                     handle: self.state.handle,
@@ -661,7 +757,6 @@ impl<'a> ExplorerHandle<Born<Placed<'a, Running>>> {
             .emit();
             Ok(ExplorerHandle {
                 id: self.id,
-                explorer_vendor: self.explorer_vendor,
                 state: Born {
                     channel: self.state.channel,
                     handle: self.state.handle,
@@ -835,10 +930,6 @@ impl<'a> ExplorerHandle<Born<Placed<'a, Running>>> {
     }
 }
 
-pub fn new(id: ExplorerID, explorer_vendor: ExplorerVendor) -> ExplorerHandle<Unborn> {
-    ExplorerHandle::<Unborn> {
-        id,
-        explorer_vendor,
-        state: Unborn,
-    }
+pub fn new(id: ExplorerID) -> ExplorerHandle<Unborn> {
+    ExplorerHandle::<Unborn> { id, state: Unborn }
 }
