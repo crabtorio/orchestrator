@@ -3,14 +3,14 @@ use std::{
     collections::{HashMap, HashSet},
     format,
     thread::{self, JoinHandle},
-    vec,
+    todo, vec,
 };
 
 use crate::{
     galaxy_generator::Galaxy,
     orchestrator::{ExplorerID, PlanetHandle},
 };
-use explorer_common::{BagContent, Explorer, logged_channel::LoggedChannel};
+use explorer_common::{Bag, BagContent, Explorer, logged_channel::LoggedChannel};
 
 use common_game::{
     components::resource::{BasicResourceType, ComplexResourceType},
@@ -288,24 +288,21 @@ impl<Any> ExplorerHandle<Born<Any>> {
     }
 }
 
-pub enum PlacedResult<'a> {
+pub enum PlacedResult<'a, InitialExplorerHandle> {
     DestinationPlanetRefused {
-        handle: UnplacedExplorerHandle,
+        handle: InitialExplorerHandle,
         reason: String,
     },
     Placed(PausedExploererHandle<'a>),
-}
-
-pub enum PlacedResultErr {
+    DestinationPlanetFailed(InitialExplorerHandle),
     ExplorerFailed,
-    DestinationPlanetFailed(UnplacedExplorerHandle),
 }
 impl<'a> ExplorerHandle<Born<Unplaced>> {
     /// Place the explorer in a planet.
     /// If the explorer is placed correctly, return a placed explorer.
     /// Otherwise, try to return the this explorer.
     /// If this too, is impossible, return ()
-    pub fn place(self, dest_planet: &'a PlanetHandle) -> Result<PlacedResult<'a>, PlacedResultErr> {
+    pub fn place(self, dest_planet: &'a PlanetHandle) -> PlacedResult<'a> {
         let check_in_result =
             dest_planet.incoming_explorer_request(self.id, self.state.planet_sender.clone());
         match check_in_result {
@@ -329,7 +326,7 @@ impl<'a> ExplorerHandle<Born<Unplaced>> {
                     planet_id: dest_planet.id,
                 });
                 match send_to_planet_res {
-                    Err(_) => return Err(PlacedResultErr::ExplorerFailed),
+                    Err(_) => return PlacedResult::ExplorerFailed,
                     Ok(()) => match channel.recv() {
                         Ok(ExplorerToOrchestrator::MovedToPlanetResult {
                             explorer_id,
@@ -340,9 +337,9 @@ impl<'a> ExplorerHandle<Born<Unplaced>> {
                                 .and(placed_handle.ensure_planet_matches(planet_id, "err_message"))
                                 .is_err()
                             {
-                                Err(PlacedResultErr::ExplorerFailed)
+                                PlacedResult::ExplorerFailed
                             } else {
-                                Ok(PlacedResult::Placed(placed_handle))
+                                PlacedResult::Placed(placed_handle)
                             }
                         }
                         Ok(msg) => {
@@ -352,35 +349,63 @@ impl<'a> ExplorerHandle<Born<Unplaced>> {
                                     &msg,
                                 )
                                 .emit();
-                            Err(PlacedResultErr::ExplorerFailed)
+                            PlacedResult::ExplorerFailed
                         }
-                        Err(_) => Err(PlacedResultErr::ExplorerFailed),
+                        Err(_) => PlacedResult::ExplorerFailed,
                     },
                 }
             }
-            Ok(Err(reason)) => Ok(PlacedResult::DestinationPlanetRefused {
+            Ok(Err(reason)) => PlacedResult::DestinationPlanetRefused {
                 handle: self,
                 reason,
-            }),
-            Err(()) => Err(PlacedResultErr::DestinationPlanetFailed(self)),
+            },
+            Err(()) => PlacedResult::DestinationPlanetFailed(self),
         }
     }
 }
 
 impl<'a> ExplorerHandle<Unborn> {
-    pub fn spawn(
+    pub fn spawn_in_place<ExplorerImplementation: Explorer>(
         self,
-        explorer: Box<RefCell<dyn Explorer + Send>>,
-    ) -> Result<ExplorerHandle<Born<Unplaced>>, ()> {
+        initial_planet: &PlanetHandle,
+    ) -> PlacedResult {
         let (tx_explorer, rx_explorer) = crossbeam_channel::unbounded();
         let (tx_orchestrator, rx_orchestrator) = crossbeam_channel::unbounded();
         let (tx_planet, rx_planet) = crossbeam_channel::unbounded();
 
+        //Perform check-in
+        match initial_planet.incoming_explorer_request(explorer_id, tx_planet.clone()) {
+            //Do nothing
+            Ok(Ok(())) => (),
+            //Return that the planet was not interested
+            Ok(Err(errmsg)) => {
+                return PlacedResult::DestinationPlanetRefused {
+                    handle: self,
+                    reason: errmsg,
+                };
+            }
+            Err(()) => return PlacedResult::DestinationPlanetFailed(self),
+        };
+
         let handle = thread::spawn(move || {
-            explorer
-                .borrow_mut()
-                .run(rx_planet, rx_explorer, tx_orchestrator);
+            ExplorerImplementation::new(
+                self.id as ID,
+                Bag::new(),
+                initial_planet.id,
+                LoggedChannel::new(
+                    rx_planet,
+                    initial_planet.tx_explorer.clone(),
+                    format!("Planet {}", planet.id),
+                ),
+                LoggedChannel::new(
+                    rx_explorer,
+                    tx_orchestrator,
+                    format!("Explorer {}", self.id),
+                ),
+            )
+            .run();
         });
+
         let channel = Channel::new(
             rx_orchestrator,
             tx_explorer,
@@ -395,17 +420,22 @@ impl<'a> ExplorerHandle<Unborn> {
                 Payload::from([("Message".into(), "Initialized".into())]),
             )
             .emit();
-            Ok(ExplorerHandle {
+
+            let born_explorer_handle = ExplorerHandle {
                 id: self.id,
                 state: Born {
                     channel,
                     handle: handle,
                     planet_sender: tx_planet,
-                    location: Unplaced,
+                    location: Placed {
+                        planet,
+                        _run_state: Stopped,
+                    },
                 },
-            })
+            };
+            PlacedResult::Placed(born_explorer_handle)
         } else {
-            Err(())
+            ExplorerFailed
         }
     }
 }

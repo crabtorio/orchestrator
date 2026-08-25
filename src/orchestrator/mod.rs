@@ -103,7 +103,7 @@ pub enum Command {
     StartExplorer {
         explorer_id: ExplorerID,
         vendor: ExplorerVendor,
-        destination_planet: PlanetHandle,
+        destination_planet: ID,
     },
     ResumeExplorer(ExplorerID),
     StopExplorer(ExplorerID),
@@ -339,52 +339,50 @@ impl Orchestrator {
                     vendor,
                     destination_planet,
                 } => explorer_handles.take_explorer(explorer_id, |maybe_explorer| {
-                    match maybe_explorer {
-                        Some(GenericExplorer::Unborn(explorer_handle)) => {
+                    match (planet_handles.get(&destination_planet), maybe_explorer) {
+                        (Some(planet_handle), Some(GenericExplorer::Unborn(explorer_handle))) => {
                             use explorer_handle::PlacedResult::*;
-                            use explorer_handle::PlacedResultErr::*;
 
-                            //TODO fill this in
-                            let vendor_runtime = match vendor {
-                                ExplorerVendor::Lorenzo => todo!(),
+                            let place_result = match vendor {
+                                ExplorerVendor::Lorenzo => explorer_handle
+                                    .spawn_in_place::<ml_explorer::Explorer>(planet_handle),
                                 ExplorerVendor::Alessio => todo!(),
                                 ExplorerVendor::Luca => todo!(),
                             };
 
-                            match explorer_handle.spawn(vendor_runtime) {
-                                Ok(explorer_handle) => {
-                                    match explorer_handle.place(&destination_planet) {
-                                        Ok(Placed(stopped_explorer)) => {
-                                            Some(GenericExplorer::Stopped(stopped_explorer))
-                                        }
-                                        Ok(DestinationPlanetRefused { handle, reason }) => {
-                                            println!(
-                                                "Could not place explorer, planet refused: {reason}"
-                                            );
-                                            Some(GenericExplorer::Unplaced(handle))
-                                        }
-                                        Err(DestinationPlanetFailed(handle)) => {
-                                            println!("Could not place explorer, planet failed");
-                                            Some(GenericExplorer::Unplaced(handle))
-                                        }
-                                        Err(ExplorerFailed) => {
-                                            println!("Explorer failed during initialization");
-                                            None
-                                        }
-                                    }
+                            match place_result {
+                                Placed(explorer_handle) => {
+                                    Some(GenericExplorer::Stopped(stopped_explorer))
                                 }
-                                Err(_) => {
+                                DestinationPlanetRefused { handle, reason } => {
+                                    println!("Could not place explorer, planet refused: {reason}");
+                                    Some(GenericExplorer::Unplaced(handle))
+                                }
+                                DestinationPlanetFailed(handle) => {
+                                    println!("Could not place explorer, planet failed");
+                                    Some(GenericExplorer::Unplaced(handle))
+                                }
+                                ExplorerFailed => {
                                     println!("Explorer failed during initialization");
                                     None
                                 }
                             }
                         }
-                        Some(_) => {
+                        (Some(_), Some(_)) => {
                             println!("This explorer is already running");
                             None
                         }
-                        None => {
+                        (None, None) => {
                             println!("Explorer not found");
+                            println!("Planet not found");
+                            None
+                        }
+                        (Some(_), None) => {
+                            println!("Explorer not found");
+                            None
+                        }
+                        (Some(_), None) => {
+                            println!("Planet not found");
                             None
                         }
                     }
