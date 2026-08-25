@@ -288,12 +288,30 @@ impl<'a> ExplorerHandle<Unborn> {
                 LoggedChannel::new(
                     rx_planet,
                     planet_tx_explorer,
-                    format!("Planet {}", initial_planet_id),
+                    Participant {
+                        actor_type: ActorType::Explorer,
+                        id: self.id as ID,
+                    },
+                    Participant {
+                        actor_type: ActorType::Planet,
+                        id: initial_planet_id,
+                    },
+                    EventType::MessageExplorerToPlanet,
+                    EventType::MessagePlanetToExplorer,
                 ),
                 LoggedChannel::new(
                     rx_orchestrator,
                     tx_explorer,
-                    format!("Explorer {}", self.id),
+                    Participant {
+                        actor_type: ActorType::Explorer,
+                        id: self.id as ID,
+                    },
+                    Participant {
+                        actor_type: ActorType::Orchestrator,
+                        id: 0,
+                    },
+                    EventType::MessageExplorerToOrchestrator,
+                    EventType::MessageOrchestratorToExplorer,
                 ),
             )
             .run();
@@ -316,7 +334,16 @@ impl<'a> ExplorerHandle<Unborn> {
         let channel = Channel::new(
             rx_explorer,
             tx_orchestrator,
-            format!("Explorer {}", self.id),
+            Participant {
+                actor_type: ActorType::Orchestrator,
+                id: self.id as ID,
+            },
+            Participant {
+                actor_type: ActorType::Explorer,
+                id: 0,
+            },
+            EventType::MessageOrchestratorToExplorer,
+            EventType::MessageExplorerToOrchestrator,
         );
         if let Ok(_) = channel.send_and_check_ack(
             OrchestratorToExplorer::StartExplorerAI,
