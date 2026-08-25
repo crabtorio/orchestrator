@@ -700,6 +700,7 @@ dependencies = [
  "pub-rust-eze",
  "rand",
  "rand_distr",
+ "regex",
  "rustrelli",
  "rusty-crab-ap2025",
  "serde",
