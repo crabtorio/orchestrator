@@ -1,7 +1,5 @@
 use std::{
-    collections::VecDeque,
-    io::{self, Write},
-    sync::{Arc, Mutex},
+    collections::VecDeque, io::{self, Write}, sync::{Arc, Mutex}, todo,
 };
 
 use common_game::{
@@ -68,7 +66,6 @@ fn parse_command(mut input: String) -> Result<Command, String> {
         "resumeexplorers" => Ok(ResumeExplorers),
         "stopexplorers" => Ok(StopExplorers),
         "killexplorers" => Ok(KillExplorers),
-        "resetexplorers" => Ok(ResetExplorers),
         "startexplorer" => Ok(StartExplorer {
             explorer_id: if let Some(argument) = arguments.get(0) {
                 if *argument == "0" {
@@ -128,19 +125,21 @@ fn parse_command(mut input: String) -> Result<Command, String> {
                 ));
             }
         })),
-        "resetexplorer" => Ok(ResetExplorer({
-            if let Some(argument) = arguments.get(0) {
-                if *argument == "0" {
+        "resetexplorer" => Ok({
+            if let (Some(explorer_id),Some(planet_id)) = (arguments.get(0),arguments.get(1)) {
+                let explorer_id = if *explorer_id == "0" {
                     super::ExplorerID::First
                 } else {
                     super::ExplorerID::Second
-                }
+                };
+                let planet_id = planet_id.parse::<ID>().map_err(|err| err.to_string())?;
+                Command::ResetExplorer { explorer_id, planet_id } 
             } else {
                 return Err(format!(
-                    "No arguments given, but needed by 'resetexplorer' command"
+                    "Not enough arguments given, expected <explorer_id,planet_id>"
                 ));
             }
-        })),
+        }),
         "resumeexplorer" => Ok(ResumeExplorer({
             if let Some(argument) = arguments.get(0) {
                 if *argument == "0" {

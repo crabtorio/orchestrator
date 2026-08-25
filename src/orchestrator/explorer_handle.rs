@@ -36,7 +36,6 @@ pub struct Born<Location> {
     handle: JoinHandle<()>,
     location: Location,
 }
-pub struct Unplaced;
 pub struct Placed<'a, Substate> {
     planet: &'a PlanetHandle,
     _run_state: Substate,
@@ -45,13 +44,11 @@ pub struct Paused;
 pub struct Running;
 
 pub type UnbornExplorerHandle = ExplorerHandle<Unborn>;
-pub type UnplacedExplorerHandle = ExplorerHandle<Born<Unplaced>>;
 pub type PausedExploererHandle<'a> = ExplorerHandle<Born<Placed<'a, Paused>>>;
 pub type RunningExploererHandle<'a> = ExplorerHandle<Born<Placed<'a, Running>>>;
 
 pub enum GenericExplorer<'a> {
     Unborn(UnbornExplorerHandle),
-    Unplaced(UnplacedExplorerHandle),
     Running(RunningExploererHandle<'a>),
     Stopped(PausedExploererHandle<'a>),
 }
@@ -101,21 +98,6 @@ impl<'a> ExplorerSet<'a> {
     ) {
         self.bulk_op(|key, explorer| {
             if let GenericExplorer::Unborn(explorer) = explorer {
-                op(key, explorer)
-            } else {
-                Some(explorer)
-            }
-        });
-    }
-
-    pub fn bulk_unplaced_op<
-        F: Fn(ExplorerID, UnplacedExplorerHandle) -> Option<GenericExplorer<'a>>,
-    >(
-        &mut self,
-        op: F,
-    ) {
-        self.bulk_op(|key, explorer| {
-            if let GenericExplorer::Unplaced(explorer) = explorer {
                 op(key, explorer)
             } else {
                 Some(explorer)
@@ -216,30 +198,6 @@ impl<Any> ExplorerHandle<Born<Any>> {
         }
     }
 
-    pub fn reset(self) -> Result<ExplorerHandle<Born<Unplaced>>, ()> {
-        if let Ok(_) = self.state.channel.send_and_check_ack(
-            OrchestratorToExplorer::ResetExplorerAI,
-            ExplorerToOrchestratorKind::ResetExplorerAIResult,
-        ) {
-            self.make_internal_log_event(
-                LogChannel::Info,
-                Payload::from([("Message".into(), "Reset".into())]),
-            )
-            .emit();
-            Ok(ExplorerHandle {
-                id: self.id,
-                state: Born {
-                    channel: self.state.channel,
-                    handle: self.state.handle,
-                    planet_sender: self.state.planet_sender,
-                    location: Unplaced,
-                },
-            })
-        } else {
-            Err(())
-        }
-    }
-
     pub fn get_bag_content(&self) -> Result<BagContent, ()> {
         self.state
             .channel
@@ -297,73 +255,6 @@ pub enum PlacedResult<'a, InitialExplorerHandle> {
     DestinationPlanetFailed(InitialExplorerHandle),
     ExplorerFailed,
 }
-impl<'a> ExplorerHandle<Born<Unplaced>> {
-    /// Place the explorer in a planet.
-    /// If the explorer is placed correctly, return a placed explorer.
-    /// Otherwise, try to return the this explorer.
-    /// If this too, is impossible, return ()
-    pub fn place(self, dest_planet: &'a PlanetHandle) -> PlacedResult<'a, Self> {
-        let check_in_result =
-            dest_planet.incoming_explorer_request(self.id, self.state.planet_sender.clone());
-        match check_in_result {
-            Ok(Ok(())) => {
-                let placed_handle = PausedExploererHandle {
-                    id: self.id,
-                    state: Born {
-                        channel: self.state.channel,
-                        planet_sender: self.state.planet_sender,
-                        handle: self.state.handle,
-                        location: Placed {
-                            planet: dest_planet,
-                            _run_state: Paused,
-                        },
-                    },
-                };
-
-                let channel = &placed_handle.state.channel;
-                let send_to_planet_res = channel.send(OrchestratorToExplorer::MoveToPlanet {
-                    sender_to_new_planet: Some(dest_planet.tx_explorer.clone()),
-                    planet_id: dest_planet.id,
-                });
-                match send_to_planet_res {
-                    Err(_) => return PlacedResult::ExplorerFailed,
-                    Ok(()) => match channel.recv() {
-                        Ok(ExplorerToOrchestrator::MovedToPlanetResult {
-                            explorer_id,
-                            planet_id,
-                        }) => {
-                            if placed_handle
-                                .ensure_id_matches(explorer_id)
-                                .and(placed_handle.ensure_planet_matches(planet_id, "err_message"))
-                                .is_err()
-                            {
-                                PlacedResult::ExplorerFailed
-                            } else {
-                                PlacedResult::Placed(placed_handle)
-                            }
-                        }
-                        Ok(msg) => {
-                            placed_handle
-                                .make_unexpected_response_log_event(
-                                    &ExplorerToOrchestratorKind::MovedToPlanetResult,
-                                    &msg,
-                                )
-                                .emit();
-                            PlacedResult::ExplorerFailed
-                        }
-                        Err(_) => PlacedResult::ExplorerFailed,
-                    },
-                }
-            }
-            Ok(Err(reason)) => PlacedResult::DestinationPlanetRefused {
-                handle: self,
-                reason,
-            },
-            Err(()) => PlacedResult::DestinationPlanetFailed(self),
-        }
-    }
-}
-
 impl<'a> ExplorerHandle<Unborn> {
     pub fn spawn_in_place<ExplorerImplementation: Explorer>(
         self,
@@ -505,15 +396,17 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
             },
         );
 
-        let (dest_planet,new_sender) = match check_in_out_result {
+        let (dest_planet, new_sender) = match check_in_out_result {
             //If we are moving and if the check in/out went out correctly.
-            Some((planet, Ok(Ok(())))) => (planet,Some(planet.tx_explorer.clone())),
+            Some((planet, Ok(Ok(())))) => (planet, Some(planet.tx_explorer.clone())),
             //Othrewiese we stay put
-            _ =>  (self.state.location.planet,None),
+            _ => (self.state.location.planet, None),
         };
 
-        let move_result = self.state.channel.send(
-            OrchestratorToExplorer::MoveToPlanet {
+        let move_result = self
+            .state
+            .channel
+            .send(OrchestratorToExplorer::MoveToPlanet {
                 sender_to_new_planet: new_sender,
                 planet_id: dest_planet.id,
             });
@@ -586,6 +479,43 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
                 }
             },
             Err(_) => Err(MoveResultError::ExplorerFailed),
+        }
+    }
+
+    /// Reset the explorer's AI and send it to `dest_planet`.
+    /// No adjacency checks are carried out: the explorer is unconditionally
+    /// moved to `dest_planet`, regardless of where it currently is.
+    pub fn reset(
+        mut self,
+        dest_planet: &'a PlanetHandle,
+    ) -> Result<ExplorerHandle<Born<Placed<'a, Paused>>>, ()> {
+        if let Ok(_) = self.state.channel.send_and_check_ack(
+            OrchestratorToExplorer::ResetExplorerAI,
+            ExplorerToOrchestratorKind::ResetExplorerAIResult,
+        ) {
+            self.make_internal_log_event(
+                LogChannel::Info,
+                Payload::from([("Message".into(), "Reset".into())]),
+            )
+            .emit();
+
+            self.move_to_planet_intnl(Some(dest_planet))
+                .map_err(|_| ())?;
+
+            Ok(ExplorerHandle {
+                id: self.id,
+                state: Born {
+                    channel: self.state.channel,
+                    handle: self.state.handle,
+                    planet_sender: self.state.planet_sender,
+                    location: Placed {
+                        planet: self.state.location.planet,
+                        _run_state: Paused,
+                    },
+                },
+            })
+        } else {
+            Err(())
         }
     }
 

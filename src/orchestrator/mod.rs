@@ -98,7 +98,6 @@ pub enum Command {
     ResumeExplorers,
     StopExplorers,
     KillExplorers,
-    ResetExplorers,
     StartExplorer {
         explorer_id: ExplorerID,
         vendor: ExplorerVendor,
@@ -107,7 +106,10 @@ pub enum Command {
     ResumeExplorer(ExplorerID),
     StopExplorer(ExplorerID),
     KillExplorer(ExplorerID),
-    ResetExplorer(ExplorerID),
+    ResetExplorer{
+        explorer_id: ExplorerID,
+        planet_id: ID,
+    },
     MoveExplorer {
         planet_id: ID,
         explorer: ExplorerID,
@@ -168,15 +170,15 @@ impl Orchestrator {
         let shell_handle = thread::spawn(move || shell.run());
         //Add the unborn explorer handles to the appropriate map
         let mut explorer_handles = ExplorerSet(HashMap::from([
-                (
-                    ExplorerID::First,
-                    GenericExplorer::Unborn(explorer_handle::new(ExplorerID::First)),
-                ),
-                (
-                    ExplorerID::Second,
-                    GenericExplorer::Unborn(explorer_handle::new(ExplorerID::Second)),
-                ),
-            ]));
+            (
+                ExplorerID::First,
+                GenericExplorer::Unborn(explorer_handle::new(ExplorerID::First)),
+            ),
+            (
+                ExplorerID::Second,
+                GenericExplorer::Unborn(explorer_handle::new(ExplorerID::Second)),
+            ),
+        ]));
         loop {
             sleep(Duration::from_millis(50));
             let next_command = {
@@ -221,7 +223,6 @@ impl Orchestrator {
                 let join_handle = match explorer {
                     GenericExplorer::Unborn(_explorer_handle) => return explorer_handle::new(id),
                     //The otheres must go through the kill procedure
-                    GenericExplorer::Unplaced(explorer_handle) => explorer_handle.kill(),
                     GenericExplorer::Running(explorer_handle) => explorer_handle.kill(),
                     GenericExplorer::Stopped(explorer_handle) => explorer_handle.kill(),
                 };
@@ -235,22 +236,22 @@ impl Orchestrator {
                 explorer_handle::new(id)
             }
 
-            fn reset_generic_explorer(
+            fn reset_generic_explorer<'a> (
                 id: ExplorerID,
-                explorer: GenericExplorer,
-            ) -> Option<GenericExplorer> {
+                explorer: GenericExplorer<'a>,
+                destination: &'a PlanetHandle,
+            ) -> Option<GenericExplorer<'a>> {
                 let reset_result = match explorer {
                     //Unborn explorers cannot be reset.
                     GenericExplorer::Unborn(explorer_handle) => {
                         return Some(GenericExplorer::Unborn(explorer_handle));
                     }
                     //All the others can
-                    GenericExplorer::Unplaced(explorer_handle) => explorer_handle.reset(),
-                    GenericExplorer::Running(explorer_handle) => explorer_handle.reset(),
-                    GenericExplorer::Stopped(explorer_handle) => explorer_handle.reset(),
+                    GenericExplorer::Running(explorer_handle) => explorer_handle.reset(destination),
+                    GenericExplorer::Stopped(explorer_handle) => explorer_handle.reset(destination),
                 };
                 match reset_result {
-                    Ok(new_handle) => Some(GenericExplorer::Unplaced(new_handle)),
+                    Ok(new_handle) => Some(GenericExplorer::Stopped(new_handle)),
                     Err(_) => {
                         println!("An error occured while resetting explorer {id}");
                         None
@@ -318,9 +319,6 @@ impl Orchestrator {
                 KillExplorers => explorer_handles.bulk_op(|id, explorer| {
                     Some(GenericExplorer::Unborn(kill_generic_explorer(id, explorer)))
                 }),
-                ResetExplorers => {
-                    explorer_handles.bulk_op(|id, explorer| reset_generic_explorer(id, explorer))
-                }
                 StartExplorer {
                     explorer_id,
                     vendor,
@@ -448,10 +446,18 @@ impl Orchestrator {
                         }
                     })
                 }
-                ResetExplorer(explorer_id) => {
+                ResetExplorer{ explorer_id, planet_id } => {
+                    let planet_handler = match planet_handles.get(&planet_id) {
+                        Some(planet_handler) => planet_handler,
+                        None => {
+                            println!("Planet not found");
+                            continue
+                        },
+                    };
+
                     explorer_handles.take_explorer(explorer_id, |maybe_explorer| {
                         match maybe_explorer {
-                            Some(explorer) => reset_generic_explorer(explorer_id, explorer),
+                            Some(explorer) => reset_generic_explorer(explorer_id, explorer,planet_handler),
                             None => {
                                 println!("Explorer not found");
                                 None
@@ -574,7 +580,6 @@ impl Orchestrator {
                     let bag_content = match explorer_handles.get(explorer_id) {
                         Some(GenericExplorer::Running(explorer)) => explorer.get_bag_content(),
                         Some(GenericExplorer::Stopped(explorer)) => explorer.get_bag_content(),
-                        Some(GenericExplorer::Unplaced(explorer)) => explorer.get_bag_content(),
                         Some(_) => {
                             println!("Explorer has not been initialized");
                             return;
