@@ -15,6 +15,7 @@ use common_game::{
 
 use crate::orchestrator::{
     Command::{self, *},
+    ExplorerVendor,
     ai::AiType::{self, RichardRandom},
 };
 
@@ -64,22 +65,43 @@ fn parse_command(mut input: String) -> Result<Command, String> {
     let arguments = &parts[1..];
 
     match command {
-        "stopexplorers" => Ok(PauseExplorers),
+        "resumeexplorers" => Ok(ResumeExplorers),
+        "stopexplorers" => Ok(StopExplorers),
         "killexplorers" => Ok(KillExplorers),
         "resetexplorers" => Ok(ResetExplorers),
-        "startexplorer" => Ok(ResumeExplorer({
-            if let Some(argument) = arguments.get(0) {
+        "startexplorer" => Ok(StartExplorer {
+            explorer_id: if let Some(argument) = arguments.get(0) {
                 if *argument == "0" {
                     super::ExplorerID::First
                 } else {
                     super::ExplorerID::Second
                 }
             } else {
-                return Err(format!(
-                    "No arguments given, but needed by 'startexplorer' command"
+                return Err(String::from(
+                    "No arguments given, but needed by 'stopexplorer' command",
                 ));
-            }
-        })),
+            },
+            vendor: {
+                if let Some(argument) = arguments.get(1) {
+                    if let Ok(explorer_vendor) = string_to_vendor(*argument) {
+                        explorer_vendor
+                    } else {
+                        return Err(String::from("Invalid explorer vendor"));
+                    }
+                } else {
+                    return Err(String::from("Missing second argument: explorer_vendor"));
+                }
+            },
+            destination_planet: {
+                if let Some(argument) = arguments.get(2) {
+                    argument.parse::<ID>().map_err(|err| err.to_string())?
+                } else {
+                    return Err(String::from(
+                        "No arguments given, but needed by 'stopexplorer' command",
+                    ));
+                }
+            },
+        }),
         "stopexplorer" => Ok(StopExplorer({
             if let Some(argument) = arguments.get(0) {
                 if *argument == "0" {
@@ -116,6 +138,19 @@ fn parse_command(mut input: String) -> Result<Command, String> {
             } else {
                 return Err(format!(
                     "No arguments given, but needed by 'resetexplorer' command"
+                ));
+            }
+        })),
+        "resumeexplorer" => Ok(ResumeExplorer({
+            if let Some(argument) = arguments.get(0) {
+                if *argument == "0" {
+                    super::ExplorerID::First
+                } else {
+                    super::ExplorerID::Second
+                }
+            } else {
+                return Err(format!(
+                    "No arguments given, but needed by 'resumeexplorer' command"
                 ));
             }
         })),
@@ -323,6 +358,14 @@ fn parse_command(mut input: String) -> Result<Command, String> {
 fn string_to_ai(str: &str) -> Result<AiType, ()> {
     match str.to_ascii_lowercase().as_str() {
         "richardrandom" => Ok(RichardRandom),
+        _ => Err(()),
+    }
+}
+fn string_to_vendor(str: &str) -> Result<ExplorerVendor, ()> {
+    match str.to_ascii_lowercase().as_str() {
+        "lorenzo" => Ok(ExplorerVendor::Lorenzo),
+        "alessio" => Ok(ExplorerVendor::Alessio),
+        "luca" => Ok(ExplorerVendor::Luca),
         _ => Err(()),
     }
 }

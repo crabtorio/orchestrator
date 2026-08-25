@@ -19,7 +19,6 @@ use common_game::{
     protocols::{orchestrator_planet, planet_explorer},
     utils::ID,
 };
-use explorer_common::Bag;
 use orchestrator_planet::{OrchestratorToPlanet, PlanetToOrchestrator};
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -39,7 +38,6 @@ pub struct Orchestrator {
     galaxy: Galaxy,
     ai_queue: Arc<Mutex<VecDeque<Command>>>,
     user_queue: Arc<Mutex<VecDeque<Command>>>,
-    explorers: Explorers,
 }
 pub struct AiHandle {
     id: ID,
@@ -98,7 +96,7 @@ impl std::fmt::Display for ExplorerID {
 pub enum Command {
     // Explorer
     ResumeExplorers,
-    PauseExplorers,
+    StopExplorers,
     KillExplorers,
     ResetExplorers,
     StartExplorer {
@@ -143,22 +141,16 @@ pub enum Command {
     Nothing, // To be returned by the parserer when the command doesn't involve any orchestrator action
 }
 
-enum Event {
-    Command(Command),
-}
-
 impl Orchestrator {
     pub fn new(
         galaxy: Galaxy,
         ai_queue: Arc<Mutex<VecDeque<Command>>>,
         user_queue: Arc<Mutex<VecDeque<Command>>>,
-        explorers: Explorers,
     ) -> Self {
         Orchestrator {
             galaxy,
             ai_queue,
             user_queue,
-            explorers,
         }
     }
     pub fn run(&mut self) {
@@ -174,7 +166,6 @@ impl Orchestrator {
 
         let shell = Shell::new(self.user_queue.clone());
         let shell_handle = thread::spawn(move || shell.run());
-
         //Add the unborn explorer handles to the appropriate map
         let mut explorer_handles = ExplorerSet(match &self.explorers {
             Explorers::One(explorer_vendor) => HashMap::from([(
@@ -192,7 +183,6 @@ impl Orchestrator {
                 ),
             ]),
         });
-
         loop {
             sleep(Duration::from_millis(50));
             let next_command = {
@@ -322,7 +312,7 @@ impl Orchestrator {
                         }
                     });
                 }
-                PauseExplorers => {
+                StopExplorers => {
                     explorer_handles.bulk_running_op(|key, explorer| match explorer.stop() {
                         Ok(explorer) => Some(GenericExplorer::Stopped(explorer)),
                         Err(_) => {
@@ -608,7 +598,7 @@ impl Orchestrator {
                         }
                     }
                 }
-                InternalStateRequest(planet_id) => todo!(),
+                InternalStateRequest(_) => (),
                 GenerateResourceRequest(explorer_id, basic_resource_type) => {
                     let result = match explorer_handles.get(explorer_id) {
                         Some(GenericExplorer::Stopped(explorer)) => {
