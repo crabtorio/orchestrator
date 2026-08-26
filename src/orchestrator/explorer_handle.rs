@@ -546,52 +546,6 @@ impl<Any> ExplorerHandle<Born<Placed<Any>>> {
     pub fn get_current_planet(&self) -> ID {
         self.state.location.planet
     }
-
-    pub fn get_supported_combinations(&self) -> Result<HashSet<ComplexResourceType>, ()> {
-        self.state
-            .channel
-            .send(OrchestratorToExplorer::SupportedCombinationRequest)
-            .map_err(|_| {})?;
-        let response = self.state.channel.recv().map_err(|_| {})?;
-        match response {
-            ExplorerToOrchestrator::SupportedCombinationResult {
-                explorer_id,
-                combination_list,
-            } => {
-                self.ensure_id_matches(explorer_id)?;
-                Ok(combination_list)
-            }
-            other => {
-                let expected = ExplorerToOrchestratorKind::SupportedCombinationResult;
-                self.make_unexpected_response_log_event(&expected, &other)
-                    .emit();
-                Err(())
-            }
-        }
-    }
-
-    pub fn get_supported_resources(&self) -> Result<HashSet<BasicResourceType>, ()> {
-        self.state
-            .channel
-            .send(OrchestratorToExplorer::SupportedResourceRequest)
-            .map_err(|_| {})?;
-        let response = self.state.channel.recv().map_err(|_| {})?;
-        match response {
-            ExplorerToOrchestrator::SupportedResourceResult {
-                explorer_id,
-                supported_resources,
-            } => {
-                self.ensure_id_matches(explorer_id)?;
-                Ok(supported_resources)
-            }
-            other => {
-                let expected = ExplorerToOrchestratorKind::SupportedResourceResult;
-                self.make_unexpected_response_log_event(&expected, &other)
-                    .emit();
-                Err(())
-            }
-        }
-    }
 }
 
 impl ExplorerHandle<Born<Placed<Paused>>> {
@@ -684,6 +638,53 @@ impl ExplorerHandle<Born<Placed<Paused>>> {
                     ]),
                 )
                 .emit();
+                Err(())
+            }
+        }
+    }
+
+    
+    pub fn get_supported_combinations(&self) -> Result<HashSet<ComplexResourceType>, ()> {
+        self.state
+            .channel
+            .send(OrchestratorToExplorer::SupportedCombinationRequest)
+            .map_err(|_| {})?;
+        let response = self.state.channel.recv().map_err(|_| {})?;
+        match response {
+            ExplorerToOrchestrator::SupportedCombinationResult {
+                explorer_id,
+                combination_list,
+            } => {
+                self.ensure_id_matches(explorer_id)?;
+                Ok(combination_list)
+            }
+            other => {
+                let expected = ExplorerToOrchestratorKind::SupportedCombinationResult;
+                self.make_unexpected_response_log_event(&expected, &other)
+                    .emit();
+                Err(())
+            }
+        }
+    }
+
+    pub fn get_supported_resources(&self) -> Result<HashSet<BasicResourceType>, ()> {
+        self.state
+            .channel
+            .send(OrchestratorToExplorer::SupportedResourceRequest)
+            .map_err(|_| {})?;
+        let response = self.state.channel.recv().map_err(|_| {})?;
+        match response {
+            ExplorerToOrchestrator::SupportedResourceResult {
+                explorer_id,
+                supported_resources,
+            } => {
+                self.ensure_id_matches(explorer_id)?;
+                Ok(supported_resources)
+            }
+            other => {
+                let expected = ExplorerToOrchestratorKind::SupportedResourceResult;
+                self.make_unexpected_response_log_event(&expected, &other)
+                    .emit();
                 Err(())
             }
         }

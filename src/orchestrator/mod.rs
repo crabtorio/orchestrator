@@ -524,14 +524,11 @@ impl Orchestrator {
                 }
                 SupportedResourceRequest(explorer_id) => {
                     let supported_resources = match explorer_handles.get(explorer_id) {
-                        Some(GenericExplorer::Running(explorer)) => {
-                            explorer.get_supported_resources()
-                        }
                         Some(GenericExplorer::Stopped(explorer)) => {
                             explorer.get_supported_resources()
                         }
                         Some(_) => {
-                            println!("Explorer is not on any planet");
+                            println!("Explorer is not stopped");
                             return;
                         }
                         None => {
@@ -549,14 +546,11 @@ impl Orchestrator {
                 }
                 SupportedCombinationRequest(explorer_id) => {
                     let supported_combinations = match explorer_handles.get(explorer_id) {
-                        Some(GenericExplorer::Running(explorer)) => {
-                            explorer.get_supported_combinations()
-                        }
                         Some(GenericExplorer::Stopped(explorer)) => {
                             explorer.get_supported_combinations()
                         }
                         Some(_) => {
-                            println!("Explorer is not on any planet");
+                            println!("Explorer is not stopped");
                             return;
                         }
                         None => {
