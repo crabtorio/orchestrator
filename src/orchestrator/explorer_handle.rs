@@ -643,7 +643,6 @@ impl ExplorerHandle<Born<Placed<Paused>>> {
         }
     }
 
-    
     pub fn get_supported_combinations(&self) -> Result<HashSet<ComplexResourceType>, ()> {
         self.state
             .channel

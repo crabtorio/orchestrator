@@ -633,7 +633,10 @@ mod tests {
                 (vendor, id, adj_ids)
             }
 
-            fn comp_data(pl1: &Arc<Mutex<PlanetContainer>>, pl2: &Arc<Mutex<PlanetContainer>>) -> bool {
+            fn comp_data(
+                pl1: &Arc<Mutex<PlanetContainer>>,
+                pl2: &Arc<Mutex<PlanetContainer>>,
+            ) -> bool {
                 let (a1, b1, c1) = gather_data(pl1);
                 let (a2, b2, c2) = gather_data(pl2);
                 a1 == a2 && b1 == b2 && c1 == c2
