@@ -69,7 +69,7 @@ fn parse_command(mut input: String) -> Result<Command, String> {
         "resumeexplorers" => Ok(ResumeExplorers),
         "stopexplorers" => Ok(StopExplorers),
         "killexplorers" => Ok(KillExplorers),
-        "startexplorer" => Ok(StartExplorer {
+        "spawnexplorer" => Ok(SpawnExplorer {
             explorer_id: if let Some(argument) = arguments.get(0) {
                 if *argument == "0" {
                     super::ExplorerID::First
@@ -142,7 +142,7 @@ fn parse_command(mut input: String) -> Result<Command, String> {
                 ));
             }
         }),
-        "resumeexplorer" => Ok(ResumeExplorer({
+        "startexplorer" => Ok(StartExplorer({
             if let Some(argument) = arguments.get(0) {
                 if *argument == "0" {
                     super::ExplorerID::First

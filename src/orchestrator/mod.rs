@@ -98,12 +98,12 @@ pub enum Command {
     ResumeExplorers,
     StopExplorers,
     KillExplorers,
-    StartExplorer {
+    SpawnExplorer {
         explorer_id: ExplorerID,
         vendor: ExplorerVendor,
         destination_planet: ID,
     },
-    ResumeExplorer(ExplorerID),
+    StartExplorer(ExplorerID),
     StopExplorer(ExplorerID),
     KillExplorer(ExplorerID),
     ResetExplorer(ExplorerID),
@@ -295,7 +295,7 @@ impl Orchestrator {
                     }
                 }
                 ResumeExplorers => {
-                    explorer_handles.bulk_paused_op(|key, explorer| match explorer.resume() {
+                    explorer_handles.bulk_paused_op(|key, explorer| match explorer.start() {
                         Ok(explorer) => Some(GenericExplorer::Running(explorer)),
                         Err(_) => {
                             println!("An error occured while unpausing explorer {key}");
@@ -315,7 +315,7 @@ impl Orchestrator {
                 KillExplorers => explorer_handles.bulk_op(|id, explorer| {
                     Some(GenericExplorer::Unborn(kill_generic_explorer(id, explorer)))
                 }),
-                StartExplorer {
+                SpawnExplorer {
                     explorer_id,
                     vendor,
                     destination_planet,
@@ -370,11 +370,11 @@ impl Orchestrator {
                         }
                     }
                 }),
-                ResumeExplorer(explorer_id) => {
+                StartExplorer(explorer_id) => {
                     explorer_handles.take_explorer(explorer_id, |maybe_explorer| {
                         match maybe_explorer {
                             Some(GenericExplorer::Stopped(explorer_handle)) => {
-                                match explorer_handle.resume() {
+                                match explorer_handle.start() {
                                     Ok(explorer_handle) => {
                                         Some(GenericExplorer::Running(explorer_handle))
                                     }
