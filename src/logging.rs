@@ -185,7 +185,7 @@ pub fn init() {
         })
         .filter(None, LevelFilter::Off)
         .filter(Some("orchestrator"), LevelFilter::Debug)
-        .filter(Some("explorer_common"), LevelFilter::Debug)
-        .filter(Some("common_game"), LevelFilter::Debug)
+        .filter(Some("explorer_common"), LevelFilter::Trace)
+        .filter(Some("common_game"), LevelFilter::Trace)
         .init();
 }
