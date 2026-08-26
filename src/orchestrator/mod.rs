@@ -155,7 +155,7 @@ impl Orchestrator {
         }
     }
     pub fn run(&mut self) {
-        let planet_handles: HashMap<ID, PlanetHandle> = self
+        let mut planet_handles: HashMap<ID, PlanetHandle> = self
             .galaxy
             .iter()
             .map(|planet| {
@@ -276,7 +276,12 @@ impl Orchestrator {
                 }
                 StartPlanet(id) => planet_handles[&id].start_planet(),
                 StopPlanet(id) => planet_handles[&id].stop_planet(),
-                KillPlanet(id) => planet_handles[&id].kill_planet(),
+                KillPlanet(id) => {
+                    self.dead_ids.lock().unwrap().push(id);
+                    planet_handles[&id].kill_planet();
+                    self.galaxy.drop_planet(id); //Planet dropped from the galaxy
+                    let option = planet_handles.remove(&id);
+                },
                 SendSunray(id) => planet_handles[&id].send_sunray(),
                 SendAsteroid(id) => planet_handles[&id].send_asteroid(),
                 SpawnAi(ai) => {
