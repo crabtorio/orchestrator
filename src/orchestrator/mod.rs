@@ -684,7 +684,7 @@ impl PlanetHandle {
         };
         PlanetHandle {
             id,
-            handle: thread::spawn(move || planet.lock().unwrap().run()),
+            handle: thread::spawn(move || planet.lock().unwrap().extract_planet().unwrap().run()),
             tx_planet,
             rx_planet,
             tx_explorer,

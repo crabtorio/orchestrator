@@ -50,6 +50,7 @@ use rand_distr::StandardNormal;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::sync::{Arc, Mutex};
+use std::{cell::RefCell, rc::Rc};
 
 pub struct Galaxy {
     pub planets: HashMap<ID, Arc<Mutex<PlanetContainer>>>, //Shifted to a hashmap to ease removal down the line, otherwise acts as a vec for what we need. ID entry is for number-driven access like rands
@@ -58,7 +59,7 @@ pub struct Galaxy {
 
 pub struct PlanetContainer {
     handling_id: ID,
-    planet: Planet,
+    planet: Option<Planet>,
     pub adj: Vec<Arc<Mutex<PlanetContainer>>>,
     vendor: PlanetVendor, //Stored vendor because otherwise unknown
     pub tx_planet: crossbeam_channel::Sender<orchestrator_planet::OrchestratorToPlanet>,
@@ -67,8 +68,8 @@ pub struct PlanetContainer {
 }
 
 impl PlanetContainer {
-    pub fn run(&mut self) -> Result<(), String> {
-        self.planet.run()
+    pub fn extract_planet(&mut self) -> Option<Planet> {
+        self.planet.take()
     }
     pub fn id(&self) -> ID {
         self.handling_id
@@ -82,7 +83,7 @@ impl PlanetContainer {
         let (te, re) = crossbeam_channel::unbounded();
         PlanetContainer {
             vendor,
-            planet: PlanetContainer::get_planet(vendor, rp1, tp2, re, id),
+            planet: Some(PlanetContainer::get_planet(vendor, rp1, tp2, re, id)),
             handling_id: id,
             adj: Vec::new(),
             tx_planet: tp1,
@@ -438,13 +439,13 @@ impl<'de> Deserialize<'de> for Galaxy {
                 );
                 let container = Arc::new(Mutex::new(PlanetContainer {
                     handling_id: entry.planet_id,
-                    planet: PlanetContainer::get_planet(
+                    planet: Some(PlanetContainer::get_planet(
                         entry.vendor.clone(),
                         rp1,
                         tp2,
                         re,
                         entry.planet_id.try_into().unwrap(),
-                    ),
+                    )),
                     adj: Vec::new(),
                     vendor: entry.vendor,
                     tx_planet: tp1,
@@ -606,6 +607,8 @@ mod tests {
 
     #[test]
     fn test_serialize_deserialize() {
+        use super::*;
+
         let pre_galaxy = Galaxy::from_random_distribution(1000, 80.0);
 
         let jstr = serde_json::to_string(&pre_galaxy)
@@ -630,7 +633,13 @@ mod tests {
                 (vendor, id, adj_ids)
             }
 
-            gather_data(pl1) == gather_data(pl2)
+            fn comp_data(pl1: &Arc<Mutex<PlanetContainer>>, pl2: &Arc<Mutex<PlanetContainer>>) -> bool {
+                let (a1, b1, c1) = gather_data(pl1);
+                let (a2, b2, c2) = gather_data(pl2);
+                a1 == a2 && b1 == b2 && c1 == c2
+            }
+
+            comp_data(&pl1, &pl2)
         }
 
         for i in pre_galaxy.planets.keys() {
