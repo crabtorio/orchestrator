@@ -38,6 +38,7 @@ pub struct Orchestrator {
     galaxy: Galaxy,
     ai_queue: Arc<Mutex<VecDeque<Command>>>,
     user_queue: Arc<Mutex<VecDeque<Command>>>,
+    dead_ids: Arc<Mutex<Vec<ID>>>,
 }
 pub struct AiHandle {
     id: ID,
@@ -150,6 +151,7 @@ impl Orchestrator {
             galaxy,
             ai_queue,
             user_queue,
+            dead_ids: Arc::new(Mutex::new(Vec::new())),
         }
     }
     pub fn run(&mut self) {
@@ -283,7 +285,7 @@ impl Orchestrator {
                             RichardRandomType => Box::new(RichardRandom),
                         },
                         self.ai_queue.clone(),
-                        AiArgs::RichardRandom(0, (self.galaxy.planets.len() - 1) as ID),
+                        AiArgs::RichardRandom(0, (self.galaxy.planets.len() - 1) as ID, self.dead_ids.clone()),
                     );
                     ai_handles.insert(new_ai.id, new_ai);
                 }

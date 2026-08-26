@@ -23,7 +23,7 @@ pub enum AiType {
 }
 
 pub enum AiArgs {
-    RichardRandom(ID, ID),
+    RichardRandom(ID, ID, Arc<Mutex<Vec<ID>>>),
 }
 pub struct RichardRandom;
 
@@ -35,28 +35,45 @@ impl Ai for RichardRandom {
         ai_args: AiArgs,
     ) {
         match ai_args {
-            AiArgs::RichardRandom(start, end) => {
+            AiArgs::RichardRandom(start, end, deads) => {
                 log::debug!("AI: RichardRandom is born with range: {} - {}", start, end);
                 //Parameter-constants, allow control for how the chances chance
+
+                const MAX_TARGET_TRIES: usize = 100;
                 const NOTHING_WEIGHT: i32 = 10;
                 const SUN_WEIGHT: i32 = 5;
                 const ASTEROID_WEIGHT: i32 = 1;
 
                 while runflag.load(Relaxed) {
-                    let target: ID = rand::random_range(start..=end) as ID;
-                    let action: i32 =
-                        rand::random_range(1..=(NOTHING_WEIGHT + SUN_WEIGHT + ASTEROID_WEIGHT));
-                    log::trace!("AI: RichardRandom rolled {} on {}", action, target);
+                    let mut target: ID = rand::random_range(start..=end) as ID;
 
-                    let mut lock = ai_queue.lock().unwrap();
-                    if action > NOTHING_WEIGHT && action <= NOTHING_WEIGHT + SUN_WEIGHT {
-                        //Send sunray to target
-                        lock.push_back(Command::SendSunray(target));
-                        log::debug!("AI: RichardRandom Sent Sunray to planet ID: {}", target);
-                    } else if !(action <= NOTHING_WEIGHT) {
-                        //Send asteroid to target
-                        lock.push_back(Command::SendAsteroid(target));
-                        log::debug!("AI: RichardRandom Sent Asteroid to planet ID: {}", target);
+                    let lock = deads.lock().unwrap();
+
+                    let mut counter = 0;
+
+                    while lock.contains(&target) && counter < MAX_TARGET_TRIES {
+                        target = rand::random_range(start..=end) as ID;
+                        counter += 1;
+                    }
+
+                    if counter < MAX_TARGET_TRIES {
+                        let action: i32 =
+                            rand::random_range(1..=(NOTHING_WEIGHT + SUN_WEIGHT + ASTEROID_WEIGHT));
+                        log::trace!("AI: RichardRandom rolled {} on {}", action, target);
+
+                        let mut lock = ai_queue.lock().unwrap();
+                        if action > NOTHING_WEIGHT && action <= NOTHING_WEIGHT + SUN_WEIGHT {
+                            //Send sunray to target
+                            lock.push_back(Command::SendSunray(target));
+                            log::debug!("AI: RichardRandom Sent Sunray to planet ID: {}", target);
+                        } else if !(action <= NOTHING_WEIGHT) {
+                            //Send asteroid to target
+                            lock.push_back(Command::SendAsteroid(target));
+                            log::debug!("AI: RichardRandom Sent Asteroid to planet ID: {}", target);
+                        }
+                    } else {
+                        log::debug!("AI: RichardRandom ran out of targets");
+                        runflag.store(false, Relaxed);
                     }
 
                     //Sleep time is 1 + offset(clamped between +1 and -1)
