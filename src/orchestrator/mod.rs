@@ -237,8 +237,8 @@ impl Orchestrator {
 
             fn reset_generic_explorer<'a>(
                 id: ExplorerID,
-                explorer: GenericExplorer<'a>,
-            ) -> Option<GenericExplorer<'a>> {
+                explorer: GenericExplorer,
+            ) -> Option<GenericExplorer> {
                 let reset_result = match explorer {
                     //Unborn explorers cannot be reset.
                     GenericExplorer::Unborn(explorer_handle) => {
@@ -281,7 +281,7 @@ impl Orchestrator {
                     planet_handles[&id].kill_planet();
                     self.galaxy.drop_planet(id); //Planet dropped from the galaxy
                     let option = planet_handles.remove(&id);
-                },
+                }
                 SendSunray(id) => planet_handles[&id].send_sunray(),
                 SendAsteroid(id) => planet_handles[&id].send_asteroid(),
                 SpawnAi(ai) => {
@@ -290,7 +290,11 @@ impl Orchestrator {
                             RichardRandomType => Box::new(RichardRandom),
                         },
                         self.ai_queue.clone(),
-                        AiArgs::RichardRandom(0, (self.galaxy.planets.len() - 1) as ID, self.dead_ids.clone()),
+                        AiArgs::RichardRandom(
+                            0,
+                            (self.galaxy.planets.len() - 1) as ID,
+                            self.dead_ids.clone(),
+                        ),
                     );
                     ai_handles.insert(new_ai.id, new_ai);
                 }
@@ -476,15 +480,12 @@ impl Orchestrator {
                         }
                     };
 
-                    let planet_handle = if let Some(planet_handle) = planet_handles.get(&planet_id)
-                    {
-                        planet_handle
-                    } else {
+                    if !planet_handles.contains_key(&planet_id) {
                         println!("Planet not found");
                         continue;
-                    };
+                    }
 
-                    let res = explorer.move_to_planet(planet_handle);
+                    let res = explorer.move_to_planet(planet_id, &planet_handles);
                     match res {
                         Err(err) => match err {
                             MoveResultError::Planet(_) => {
@@ -658,10 +659,10 @@ impl Orchestrator {
     }
 
     ///Poll explorers and handle first found request. Reutnrs `Err(explorer_index)` if there is an error while handling an explorer's request
-    fn poll_and_handle_first_req<'a, 'b>(
+    fn poll_and_handle_first_req(
         &mut self,
-        explorers: &'b HashMap<ExplorerID, RefCell<RunningExploererHandle<'a>>>,
-        planet_handles: &'a HashMap<ID, PlanetHandle>,
+        explorers: &HashMap<ExplorerID, RefCell<RunningExploererHandle>>,
+        planet_handles: &HashMap<ID, PlanetHandle>,
     ) -> Result<(), ExplorerID> {
         for (explorer_index, explorer) in explorers.iter() {
             let result = explorer
