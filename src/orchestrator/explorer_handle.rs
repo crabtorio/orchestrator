@@ -267,7 +267,6 @@ pub enum PlacedResult<'a, InitialExplorerHandle> {
     },
     Placed(PausedExploererHandle<'a>),
     DestinationPlanetFailed(InitialExplorerHandle),
-    ExplorerFailed,
 }
 impl<'a> ExplorerHandle<Unborn> {
     pub fn spawn_in_place<ExplorerImplementation: Explorer>(
@@ -345,32 +344,26 @@ impl<'a> ExplorerHandle<Unborn> {
             EventType::MessageOrchestratorToExplorer,
             EventType::MessageExplorerToOrchestrator,
         );
-        if let Ok(_) = channel.send_and_check_ack(
-            OrchestratorToExplorer::StartExplorerAI,
-            ExplorerToOrchestratorKind::StartExplorerAIResult,
-        ) {
-            self.make_internal_log_event(
-                LogChannel::Info,
-                Payload::from([("Message".into(), "Initialized".into())]),
-            )
-            .emit();
 
-            let born_explorer_handle = ExplorerHandle {
-                id: self.id,
-                state: Born {
-                    channel,
-                    handle: handle,
-                    planet_sender: tx_planet,
-                    location: Placed {
-                        planet: initial_planet,
-                        _run_state: Paused,
-                    },
+        self.make_internal_log_event(
+            LogChannel::Info,
+            Payload::from([("Message".into(), "Initialized".into())]),
+        )
+        .emit();
+
+        let born_explorer_handle = ExplorerHandle {
+            id: self.id,
+            state: Born {
+                channel,
+                handle: handle,
+                planet_sender: tx_planet,
+                location: Placed {
+                    planet: initial_planet,
+                    _run_state: Paused,
                 },
-            };
-            PlacedResult::Placed(born_explorer_handle)
-        } else {
-            PlacedResult::ExplorerFailed
-        }
+            },
+        };
+        PlacedResult::Placed(born_explorer_handle)
     }
 }
 
@@ -618,7 +611,7 @@ impl<'a, Any> ExplorerHandle<Born<Placed<'a, Any>>> {
 }
 
 impl<'a> ExplorerHandle<Born<Placed<'a, Paused>>> {
-    pub fn resume(self) -> Result<RunningExploererHandle<'a>, ()> {
+    pub fn start(self) -> Result<RunningExploererHandle<'a>, ()> {
         if let Ok(_) = self.state.channel.send_and_check_ack(
             OrchestratorToExplorer::StartExplorerAI,
             ExplorerToOrchestratorKind::StartExplorerAIResult,
