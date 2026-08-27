@@ -340,7 +340,8 @@ impl Orchestrator {
                                 ExplorerVendor::Lorenzo => explorer_handle
                                     .spawn_in_place::<ml_explorer::Explorer>(planet_handle),
                                 ExplorerVendor::Alessio => todo!(),
-                                ExplorerVendor::Luca => todo!(),
+                                ExplorerVendor::Luca => explorer_handle
+                                    .spawn_in_place::<fl_explorer::Explorer>(planet_handle),
                             };
 
                             match place_result {
