@@ -179,7 +179,6 @@ impl Orchestrator {
             ),
         ]));
         loop {
-            sleep(Duration::from_millis(50));
             let next_command = {
                 let command = self
                     .user_queue
