@@ -321,7 +321,11 @@ impl Orchestrator {
                     );
                     ai_handles.insert(new_ai.id, new_ai);
                 }
-                KillAi(id) => ai_handles[&id].run_flag.store(false, Release), // Not sure about the right ordering, check later
+                KillAi(id) => {
+                    if let Some(handle) = ai_handles.get(&id) {
+                        handle.run_flag.store(false, Release);
+                    }
+                }
                 ShowRunningAis => {
                     let mut to_print = String::from("Running AIs\n");
                     for (_, handle) in &ai_handles {

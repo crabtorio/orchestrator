@@ -1,7 +1,4 @@
-use crate::{
-    galaxy_generator::Galaxy,
-    orchestrator::{ExplorerVendor, Explorers, Orchestrator},
-};
+use crate::{galaxy_generator::Galaxy, orchestrator::Orchestrator};
 use clap::{Parser, Subcommand, ValueEnum};
 use std::{
     collections::VecDeque,
