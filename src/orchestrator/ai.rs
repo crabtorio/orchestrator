@@ -76,12 +76,12 @@ impl Ai for RichardRandom {
                         runflag.store(false, Relaxed);
                     }
 
-                    //Sleep time is 1 + offset(clamped between +1 and -1)
+                    //Sleep time is 3 + offset(clamped between +1 and -1)
                     let sleep_offset: f32 = rand::rng().sample(StandardNormal);
                     let sleep_time = match sleep_offset {
-                        ..=-1.0 => 0,
-                        1.0.. => 2000,
-                        _ => (1000 + (sleep_offset * 1000.0).round() as i32) as u64,
+                        ..=-1.0 => 2000,
+                        1.0.. => 4000,
+                        _ => (3000 + (sleep_offset * 1000.0).round() as i32) as u64,
                     };
                     log::trace!(
                         "AI: RichardRandom Sleeping for: {} milliseconds",
