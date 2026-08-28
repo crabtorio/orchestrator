@@ -24,8 +24,6 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::sync::atomic::Ordering::{Relaxed, Release};
 use std::sync::atomic::{AtomicBool, AtomicU32};
-use std::thread::sleep;
-use std::time::Duration;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -683,9 +681,10 @@ impl PlanetHandle {
                 lock.id(),
             )
         };
+        let mut planet = planet.lock().unwrap().extract_planet().unwrap();
         PlanetHandle {
             id,
-            handle: thread::spawn(move || planet.lock().unwrap().extract_planet().unwrap().run()),
+            handle: thread::spawn(move || planet.run()),
             tx_planet,
             rx_planet,
             tx_explorer,
