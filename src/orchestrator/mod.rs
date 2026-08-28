@@ -6,11 +6,10 @@ use crate::orchestrator::Command::*;
 use crate::orchestrator::ai::AiType::RichardRandom as RichardRandomType;
 use crate::orchestrator::ai::{Ai, AiArgs, AiType, RichardRandom};
 use crate::orchestrator::explorer_handle::{
-    ExplorerHandle, ExplorerSet, GenericExplorer, MoveResult, MoveResultError,
-    PausedExploererHandle, PlacedResult, RunningExploererHandle, UnbornExplorerHandle,
+    ExplorerSet, GenericExplorer, MoveResult, MoveResultError, RunningExploererHandle,
+    UnbornExplorerHandle,
 };
 use crate::orchestrator::shell::Shell;
-use clap::builder::IntoResettable;
 use common_game::components::asteroid::Asteroid;
 use common_game::components::planet::DummyPlanetState;
 use common_game::components::resource::{BasicResourceType, ComplexResourceType};
@@ -21,9 +20,9 @@ use common_game::{
     utils::ID,
 };
 use orchestrator_planet::{OrchestratorToPlanet, PlanetToOrchestrator};
-use std::any::Any;
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::println;
 use std::sync::atomic::Ordering::{Relaxed, Release};
 use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::{
@@ -31,7 +30,6 @@ use std::{
     sync::{Arc, Mutex},
     thread::{self, JoinHandle},
 };
-use std::{println, todo};
 
 pub mod ai;
 
