@@ -282,12 +282,22 @@ impl Orchestrator {
                         }
                     });
                     self.dead_ids.lock().unwrap().push(id);
-                    planet_handles[&id].kill_planet();
+                    if let Some(handle) = planet_handles.get(&id) {
+                        handle.kill_planet();
+                    }
                     self.galaxy.drop_planet(id); //Planet dropped from the galaxy
                     let _res = planet_handles.remove(&id);
                 }
-                SendSunray(id) => planet_handles[&id].send_sunray(),
-                SendAsteroid(id) => planet_handles[&id].send_asteroid(),
+                SendSunray(id) => {
+                    if let Some(handle) = planet_handles.get(&id) {
+                        handle.send_sunray();
+                    }
+                }
+                SendAsteroid(id) => {
+                    if let Some(handle) = planet_handles.get(&id) {
+                        handle.send_asteroid();
+                    }
+                }
                 SpawnAi(ai) => {
                     let new_ai = AiHandle::new(
                         match ai {
@@ -369,9 +379,11 @@ impl Orchestrator {
                         (Some(planet_handle), Some(GenericExplorer::Unborn(explorer_handle))) => {
                             Some(spawn_explorer(planet_handle, vendor, explorer_handle))
                         }
-                        (Some(planet_handle), None) => {
-                            Some(spawn_explorer(planet_handle, vendor, explorer_handle::new(explorer_id)))
-                        }
+                        (Some(planet_handle), None) => Some(spawn_explorer(
+                            planet_handle,
+                            vendor,
+                            explorer_handle::new(explorer_id),
+                        )),
                         (Some(_), Some(explorer)) => {
                             println!("This explorer is already running");
                             Some(explorer)
