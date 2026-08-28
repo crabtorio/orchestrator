@@ -28,3 +28,4 @@ regex = "1.13.1"
 #Explorers
 ml-explorer = { git = "https://github.com/crabtorio/ml-explorer.git", branch = "main" }
 fl-explorer = { git = "https://github.com/crabtorio/fl-explorer.git", branch = "main"}
+az-explorer = { git = "https://github.com/crabtorio/az-explorer.git", branch = "main"}
