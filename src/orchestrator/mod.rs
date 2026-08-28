@@ -6,7 +6,7 @@ use crate::orchestrator::Command::*;
 use crate::orchestrator::ai::AiType::RichardRandom as RichardRandomType;
 use crate::orchestrator::ai::{Ai, AiArgs, AiType, RichardRandom};
 use crate::orchestrator::explorer_handle::{
-    ExplorerSet, GenericExplorer, MoveResult, MoveResultError, PlacedResult,
+    ExplorerSet, GenericExplorer, MoveResult, MoveResultError, PausedExploererHandle, PlacedResult,
     RunningExploererHandle, UnbornExplorerHandle,
 };
 use crate::orchestrator::shell::Shell;
@@ -274,7 +274,7 @@ impl Orchestrator {
                 StartPlanet(id) => planet_handles[&id].start_planet(),
                 StopPlanet(id) => planet_handles[&id].stop_planet(),
                 KillPlanet(id) => {
-                     //Kill all explorers in the planet
+                    //Kill all explorers in the planet
                     explorer_handles.bulk_op(|explorer_id, explorer| {
                         let explorer_planet_id = match &explorer {
                             GenericExplorer::Unborn(_) => return Some(explorer),
@@ -347,31 +347,39 @@ impl Orchestrator {
                 } => explorer_handles.take_explorer(explorer_id, |maybe_explorer| {
                     let maybe_planet = planet_handles.get(&destination_planet);
 
+                    fn spawn_explorer(
+                        planet_handle: &PlanetHandle,
+                        vendor: ExplorerVendor,
+                        explorer_handle: UnbornExplorerHandle,
+                    ) -> GenericExplorer {
+                        use explorer_handle::PlacedResult::*;
+                        let place_result = match vendor {
+                            ExplorerVendor::Lorenzo => explorer_handle
+                                .spawn_in_place::<ml_explorer::Explorer>(planet_handle),
+                            ExplorerVendor::Alessio => todo!(),
+                            ExplorerVendor::Luca => explorer_handle
+                                .spawn_in_place::<fl_explorer::Explorer>(planet_handle),
+                        };
+
+                        match place_result {
+                            Placed(explorer_handle) => GenericExplorer::Stopped(explorer_handle),
+                            DestinationPlanetRefused { handle, reason } => {
+                                println!("Could not place explorer, planet refused: {reason}");
+                                GenericExplorer::Unborn(handle)
+                            }
+                            DestinationPlanetFailed(handle) => {
+                                println!("Could not place explorer, planet failed");
+                                GenericExplorer::Unborn(handle)
+                            }
+                        }
+                    }
+
                     match (maybe_planet, maybe_explorer) {
                         (Some(planet_handle), Some(GenericExplorer::Unborn(explorer_handle))) => {
-                            use explorer_handle::PlacedResult::*;
-
-                            let place_result = match vendor {
-                                ExplorerVendor::Lorenzo => explorer_handle
-                                    .spawn_in_place::<ml_explorer::Explorer>(planet_handle),
-                                ExplorerVendor::Alessio => todo!(),
-                                ExplorerVendor::Luca => explorer_handle
-                                    .spawn_in_place::<fl_explorer::Explorer>(planet_handle),
-                            };
-
-                            match place_result {
-                                Placed(explorer_handle) => {
-                                    Some(GenericExplorer::Stopped(explorer_handle))
-                                }
-                                DestinationPlanetRefused { handle, reason } => {
-                                    println!("Could not place explorer, planet refused: {reason}");
-                                    Some(GenericExplorer::Unborn(handle))
-                                }
-                                DestinationPlanetFailed(handle) => {
-                                    println!("Could not place explorer, planet failed");
-                                    Some(GenericExplorer::Unborn(handle))
-                                }
-                            }
+                            Some(spawn_explorer(planet_handle, vendor, explorer_handle))
+                        }
+                        (Some(planet_handle), None) => {
+                            Some(spawn_explorer(planet_handle, vendor, explorer_handle::new(explorer_id)))
                         }
                         (Some(_), Some(explorer)) => {
                             println!("This explorer is already running");
@@ -380,10 +388,6 @@ impl Orchestrator {
                         (None, None) => {
                             println!("Explorer not found");
                             println!("Planet not found");
-                            None
-                        }
-                        (Some(_), None) => {
-                            println!("Explorer not found");
                             None
                         }
                         (None, Some(explorer)) => {
