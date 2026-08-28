@@ -6,8 +6,7 @@ use crate::orchestrator::Command::*;
 use crate::orchestrator::ai::AiType::RichardRandom as RichardRandomType;
 use crate::orchestrator::ai::{Ai, AiArgs, AiType, RichardRandom};
 use crate::orchestrator::explorer_handle::{
-    ExplorerSet, GenericExplorer, MoveResult, MoveResultError, RunningExploererHandle,
-    UnbornExplorerHandle,
+    ExplorerSet, GenericExplorer, MoveResult, MoveResultError, PlacedResult, RunningExploererHandle, UnbornExplorerHandle,
 };
 use crate::orchestrator::shell::Shell;
 use common_game::components::asteroid::Asteroid;
@@ -354,15 +353,11 @@ impl Orchestrator {
                                     println!("Could not place explorer, planet failed");
                                     Some(GenericExplorer::Unborn(handle))
                                 }
-                                ExplorerFailed => {
-                                    println!("Explorer failed during initialization");
-                                    None
-                                }
                             }
                         }
-                        (Some(_), Some(_)) => {
+                        (Some(_), Some(explorer)) => {
                             println!("This explorer is already running");
-                            None
+                            Some(explorer)
                         }
                         (None, None) => {
                             println!("Explorer not found");
@@ -373,9 +368,9 @@ impl Orchestrator {
                             println!("Explorer not found");
                             None
                         }
-                        (None, Some(_)) => {
+                        (None, Some(explorer)) => {
                             println!("Planet not found");
-                            None
+                            Some(explorer)
                         }
                     }
                 }),
@@ -393,13 +388,13 @@ impl Orchestrator {
                                     }
                                 }
                             }
-                            Some(GenericExplorer::Running(_)) => {
+                            Some(GenericExplorer::Running(explorer)) => {
                                 println!("The explorer is already running");
-                                None
+                                Some(GenericExplorer::Running(explorer))
                             }
-                            Some(_) => {
+                            Some(explorer) => {
                                 println!("The explorer can not be resumed");
-                                None
+                                Some(explorer)
                             }
                             None => {
                                 println!("Explorer not found");
@@ -422,13 +417,13 @@ impl Orchestrator {
                                     }
                                 }
                             }
-                            Some(GenericExplorer::Stopped(_)) => {
+                            Some(GenericExplorer::Stopped(explorer)) => {
                                 println!("This explorer is already stopped");
-                                None
+                                Some(GenericExplorer::Stopped(explorer))
                             }
-                            Some(_) => {
+                            Some(explorer) => {
                                 println!("This explorer has already been initialized");
-                                None
+                                Some(explorer)
                             }
                             None => {
                                 println!("Explorer not found");
