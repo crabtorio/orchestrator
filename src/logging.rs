@@ -293,6 +293,7 @@ pub fn init() {
         .filter(Some("orchestrator"), LevelFilter::Debug)
         .filter(Some("explorer_common"), LevelFilter::Trace)
         .filter(Some("common_game"), LevelFilter::Trace)
+        .filter(Some("lm-explorer"), LevelFilter::Debug)
         .init();
 
     spawn_log_viewer(log_path.into());

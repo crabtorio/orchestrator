@@ -650,13 +650,6 @@ impl Orchestrator {
             }
         }
 
-        //This is for debug, planets should be started, stopped and killed by the user. The only thing that stays below is the thread joining
-
-        // Start all planets
-        for (_, handle) in &planet_handles {
-            handle.start_planet();
-        }
-
         // Stop and kill planets then join the thread
         for (_, handle) in planet_handles {
             handle.stop_planet();
