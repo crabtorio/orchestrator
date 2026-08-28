@@ -275,6 +275,22 @@ impl ExplorerHandle<Unborn> {
 
         let initial_planet_id = initial_planet.id;
         let planet_tx_explorer = initial_planet.tx_explorer.clone();
+
+        //Perform check-in
+        match initial_planet.incoming_explorer_request(self.id, tx_planet.clone()) {
+            //Do nothing
+            Ok(Ok(())) => (),
+            //Return that the planet was not interested
+            Ok(Err(errmsg)) => {
+                return PlacedResult::DestinationPlanetRefused {
+                    handle: self,
+                    reason: errmsg,
+                };
+            }
+            Err(()) => return PlacedResult::DestinationPlanetFailed(self),
+        };
+
+        //If the check-in went correctly, spawn the explorer
         let handle = thread::spawn(move || {
             ExplorerImplementation::new(
                 self.id as ID,
@@ -311,20 +327,6 @@ impl ExplorerHandle<Unborn> {
             )
             .run();
         });
-
-        //Perform check-in
-        match initial_planet.incoming_explorer_request(self.id, tx_planet.clone()) {
-            //Do nothing
-            Ok(Ok(())) => (),
-            //Return that the planet was not interested
-            Ok(Err(errmsg)) => {
-                return PlacedResult::DestinationPlanetRefused {
-                    handle: self,
-                    reason: errmsg,
-                };
-            }
-            Err(()) => return PlacedResult::DestinationPlanetFailed(self),
-        };
 
         let channel = Channel::new(
             rx_explorer,
