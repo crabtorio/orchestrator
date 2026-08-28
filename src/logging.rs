@@ -204,7 +204,7 @@ fn spawn_log_viewer(path_str: String) {
             use std::os::windows::process::CommandExt;
             const CREATE_NEW_CONSOLE: u32 = 0x00000010;
             let ps_cmd = format!(
-                "Get-Content -Path '{}' -Wait -Tail 1000",
+                "while ($true) {{ Get-Content -Path '{}' -Tail 1000 -Wait -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 500 }}",
                 path_str.replace('\'', "''")
             );
             Command::new("powershell")
@@ -235,12 +235,15 @@ fn spawn_log_viewer(path_str: String) {
 
 pub fn init() {
     let log_path = "./orchestrator.log";
-    let file = std::fs::OpenOptions::new()
+    let mut file = std::fs::OpenOptions::new()
         .create(true)
         .write(true)
         .truncate(true)
         .open(log_path)
         .expect("failed to open log file");
+
+    let _ = writeln!(file, "--- orchestrator log started ---");
+
     Builder::new()
         .target(env_logger::Target::Pipe(Box::new(file)))
         .format(|buf, record| {
