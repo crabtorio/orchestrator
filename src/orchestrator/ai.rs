@@ -41,7 +41,7 @@ impl Ai for RichardRandom {
 
                 const MAX_TARGET_TRIES: usize = 100;
                 const NOTHING_WEIGHT: i32 = 10;
-                const SUN_WEIGHT: i32 = 5;
+                const SUN_WEIGHT: i32 = 19;
                 const ASTEROID_WEIGHT: i32 = 1;
 
                 while runflag.load(Relaxed) {
