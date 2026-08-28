@@ -314,10 +314,11 @@ impl Orchestrator {
                 }
                 KillAi(id) => ai_handles[&id].run_flag.store(false, Release), // Not sure about the right ordering, check later
                 ShowRunningAis => {
-                    println!("Running AIs");
+                    let mut to_print = String::from("Running AIs\n");
                     for (_, handle) in &ai_handles {
-                        println!("id: {}", handle.id);
+                        to_print.push_str(&format!("id: {}\n", handle.id));
                     }
+                    print!("{}", to_print);
                 }
                 ResumeExplorers => {
                     explorer_handles.bulk_paused_op(|key, explorer| match explorer.start() {
