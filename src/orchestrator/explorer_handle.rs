@@ -1,4 +1,9 @@
-use std::{collections::{HashMap, HashSet}, format, thread::{self, JoinHandle}, vec};
+use std::{
+    collections::{HashMap, HashSet},
+    format,
+    thread::{self, JoinHandle},
+    vec,
+};
 
 use crate::{
     galaxy_generator::Galaxy,
@@ -468,7 +473,7 @@ impl<Any> ExplorerHandle<Born<Placed<Any>>> {
 
                 self.state.location.planet = dest_planet_id;
                 self.make_internal_log_event(
-                    LogChannel::Error,
+                    LogChannel::Info,
                     Payload::from([
                         ("Message".into(), "Explorer moved to planet".into()),
                         ("Planet".into(), format!("{}", self.state.location.planet)),
