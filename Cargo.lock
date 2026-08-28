@@ -96,7 +96,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 [[package]]
 name = "az-explorer"
 version = "0.1.0"
-source = "git+https://github.com/crabtorio/az-explorer.git?branch=main#af75424fa1bf26083c93a18032370aede164be5e"
+source = "git+https://github.com/crabtorio/az-explorer.git?branch=main#51bae33cdf86482b94731c5f88162fc791168d02"
 dependencies = [
  "common-game",
  "crossbeam-channel",
@@ -700,11 +700,12 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 [[package]]
 name = "ml-explorer"
 version = "0.1.0"
-source = "git+https://github.com/crabtorio/ml-explorer.git?branch=main#3c74dd04f0293eceb43a0dd4bf4e8ae44883665a"
+source = "git+https://github.com/crabtorio/ml-explorer.git?branch=main#c3feb885ebbd47d4c5966787d5a025f3d1837084"
 dependencies = [
  "common-game",
  "crossbeam-channel",
  "explorer-common",
+ "log",
 ]
 
 [[package]]
