@@ -398,7 +398,7 @@ dependencies = [
 [[package]]
 name = "explorer-common"
 version = "0.1.0"
-source = "git+https://github.com/crabtorio/explorer-common?branch=main#72ebfe37b2b7ac0a8ff5771509213f4432523354"
+source = "git+https://github.com/crabtorio/explorer-common?branch=main#7c2a5e1597376d9f525e3b381bca615a7e640c30"
 dependencies = [
  "common-game",
  "crossbeam-channel",
@@ -655,7 +655,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 [[package]]
 name = "ml-explorer"
 version = "0.1.0"
-source = "git+https://github.com/crabtorio/ml-explorer.git?branch=main#a7a82a0d1925bd1a3e2da0f9e2f816ef3032ce88"
+source = "git+https://github.com/crabtorio/ml-explorer.git?branch=main#1eb33299134c2b2909f86af23372d5f13c3523cc"
 dependencies = [
  "common-game",
  "crossbeam-channel",

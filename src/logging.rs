@@ -1,16 +1,15 @@
 use env_logger::Builder;
 use log::{Level, LevelFilter};
 use regex::Regex;
-use std::io::{IsTerminal, Write};
+use std::io::Write;
+use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 use std::{format, write, writeln};
 
 // --- ANSI helpers -----------------------------------------------------
 
 fn color_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED
-        .get_or_init(|| std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal())
+    std::env::var_os("NO_COLOR").is_none()
 }
 
 const RESET: &str = "\x1b[0m";
@@ -135,11 +134,93 @@ fn level_code(level: Level) -> &'static str {
         Level::Trace => CYAN,
     }
 }
+fn spawn_log_viewer(path_str: String) {
+    let tail_cmd = format!("tail -n +1 -f '{}'", path_str);
+
+    let launched = if std::env::var_os("TMUX").is_some() {
+        Command::new("tmux")
+            .args(["split-window", "-d", "-h", &tail_cmd])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    } else if std::env::var_os("KITTY_WINDOW_ID").is_some() {
+        Command::new("kitty")
+            .args(["@", "launch", "--type=os-window", "sh", "-c", &tail_cmd])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .is_ok()
+    } else if std::env::consts::OS == "macos" {
+        let script = format!(
+            "tell application \"Terminal\" to do script \"{}\"",
+            tail_cmd
+        );
+        Command::new("osascript")
+            .args(["-e", &script])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    } else if std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some()
+    {
+        // Try other Linux terminals
+        [
+            "x-terminal-emulator",
+            "gnome-terminal",
+            "konsole",
+            "xterm",
+            "alacritty",
+        ]
+        .iter()
+        .any(|term| {
+            let mut cmd = Command::new(term);
+            match *term {
+                "gnome-terminal" => {
+                    cmd.args(["--", "sh", "-c", &tail_cmd]);
+                }
+                "x-terminal-emulator" | "xterm" | "alacritty" => {
+                    cmd.args(["-e", "sh", "-c", &tail_cmd]);
+                }
+                "konsole" => {
+                    cmd.args(["-e", "sh", "-c", &tail_cmd]);
+                }
+                _ => unreachable!(),
+            }
+            cmd.stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .is_ok()
+        })
+    } else {
+        false
+    };
+
+    if !launched {
+        // If it fails, run anyway but advise the user
+        eprintln!(
+            "(couldn't open a live log view, run `tail -f {}` in another terminal to see logs)",
+            path_str
+        );
+    }
+}
 
 pub fn init() {
-    // To silence all other crates' logging
-
+    let log_path = "./orchestrator.log";
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(log_path)
+        .expect("failed to open log file");
     Builder::new()
+        .target(env_logger::Target::Pipe(Box::new(file)))
         .format(|buf, record| {
             let msg = record.args().to_string();
 
@@ -188,4 +269,6 @@ pub fn init() {
         .filter(Some("explorer_common"), LevelFilter::Trace)
         .filter(Some("common_game"), LevelFilter::Trace)
         .init();
+
+    spawn_log_viewer(log_path.into());
 }
