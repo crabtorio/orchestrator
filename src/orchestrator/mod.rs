@@ -5,8 +5,12 @@ use crate::galaxy_generator::{Galaxy, PlanetContainer};
 use crate::orchestrator::Command::*;
 use crate::orchestrator::ai::AiType::RichardRandom as RichardRandomType;
 use crate::orchestrator::ai::{Ai, AiArgs, AiType, RichardRandom};
-use crate::orchestrator::explorer_handle::{ExplorerHandle, ExplorerSet, GenericExplorer, MoveResult, MoveResultError, PausedExploererHandle, PlacedResult, RunningExploererHandle, UnbornExplorerHandle};
+use crate::orchestrator::explorer_handle::{
+    ExplorerHandle, ExplorerSet, GenericExplorer, MoveResult, MoveResultError,
+    PausedExploererHandle, PlacedResult, RunningExploererHandle, UnbornExplorerHandle,
+};
 use crate::orchestrator::shell::Shell;
+use clap::builder::IntoResettable;
 use common_game::components::asteroid::Asteroid;
 use common_game::components::planet::DummyPlanetState;
 use common_game::components::resource::{BasicResourceType, ComplexResourceType};
@@ -17,6 +21,7 @@ use common_game::{
     utils::ID,
 };
 use orchestrator_planet::{OrchestratorToPlanet, PlanetToOrchestrator};
+use std::any::Any;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::sync::atomic::Ordering::{Relaxed, Release};
@@ -27,8 +32,6 @@ use std::{
     thread::{self, JoinHandle},
 };
 use std::{println, todo};
-use std::any::Any;
-use clap::builder::IntoResettable;
 
 pub mod ai;
 
@@ -261,8 +264,16 @@ impl Orchestrator {
                         handle.kill_planet();
                     }
                 }
-                StartPlanet(id) => planet_handles[&id].start_planet(),
-                StopPlanet(id) => planet_handles[&id].stop_planet(),
+                StartPlanet(id) => {
+                    if let Some(handle) = planet_handles.get(&id) {
+                        handle.start_planet();
+                    }
+                }
+                StopPlanet(id) => {
+                    if let Some(handle) = planet_handles.get(&id) {
+                        handle.stop_planet();
+                    }
+                }
                 KillPlanet(id) => {
                     //Kill all explorers in the planet
                     explorer_handles.bulk_op(|explorer_id, explorer| {
@@ -661,15 +672,15 @@ impl Orchestrator {
             let handle = match explorer {
                 GenericExplorer::Unborn(_explorer_handle) => None,
                 //The others must go through the kill procedure
-                GenericExplorer::Running(explorer_handle) => {Some(explorer_handle.kill())},
-                GenericExplorer::Stopped(explorer_handle) => {Some(explorer_handle.kill())},
+                GenericExplorer::Running(explorer_handle) => Some(explorer_handle.kill()),
+                GenericExplorer::Stopped(explorer_handle) => Some(explorer_handle.kill()),
             };
             let ret = match handle {
-                Some(Ok(handle)) => {handle.join()},
-                Some(Err(())) => {Ok(())},
-                None => {Ok(())},
+                Some(Ok(handle)) => handle.join(),
+                Some(Err(())) => Ok(()),
+                None => Ok(()),
             };
-            if ret.is_ok() {None} else {None}
+            if ret.is_ok() { None } else { None }
         });
 
         shell_handle.join();
