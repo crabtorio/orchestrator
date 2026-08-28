@@ -398,7 +398,7 @@ dependencies = [
 [[package]]
 name = "explorer-common"
 version = "0.1.0"
-source = "git+https://github.com/crabtorio/explorer-common?branch=main#6689fa551ef2bdad4ccc5596a3e9f715d464667c"
+source = "git+https://github.com/crabtorio/explorer-common?branch=main#72ebfe37b2b7ac0a8ff5771509213f4432523354"
 dependencies = [
  "common-game",
  "crossbeam-channel",
@@ -421,6 +421,16 @@ name = "find-msvc-tools"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d45db016d36b838f563236e9193d0ee6ce38f3f68b6c94e914b4929c96bbb890"
+
+[[package]]
+name = "fl-explorer"
+version = "0.1.0"
+source = "git+https://github.com/crabtorio/fl-explorer.git?branch=main#adca0389069fade3d1703524827c3443a3d3bebc"
+dependencies = [
+ "common-game",
+ "crossbeam-channel",
+ "explorer-common",
+]
 
 [[package]]
 name = "foldhash"
@@ -645,7 +655,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 [[package]]
 name = "ml-explorer"
 version = "0.1.0"
-source = "git+https://github.com/crabtorio/ml-explorer.git?branch=main#ecb28d59d611512cfa7c66ae377de37f065012ee"
+source = "git+https://github.com/crabtorio/ml-explorer.git?branch=main#a7a82a0d1925bd1a3e2da0f9e2f816ef3032ce88"
 dependencies = [
  "common-game",
  "crossbeam-channel",
@@ -693,6 +703,7 @@ dependencies = [
  "crossbeam-channel",
  "env_logger",
  "explorer-common",
+ "fl-explorer",
  "log",
  "luna4",
  "ml-explorer",
