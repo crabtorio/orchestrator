@@ -1,9 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    format,
-    thread::{self, JoinHandle},
-    vec,
-};
+use std::{collections::{HashMap, HashSet}, format, thread::{self, JoinHandle}, vec};
 
 use crate::{
     galaxy_generator::Galaxy,

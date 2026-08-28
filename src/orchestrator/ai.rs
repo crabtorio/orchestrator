@@ -44,7 +44,7 @@ impl Ai for RichardRandom {
                 const SUN_WEIGHT: i32 = 19;
                 const ASTEROID_WEIGHT: i32 = 1;
 
-                const RAY_BATCH_SIZE: usize = 100;
+                const RAY_BATCH_SIZE: usize = 4;
 
                 while runflag.load(Relaxed) {
 

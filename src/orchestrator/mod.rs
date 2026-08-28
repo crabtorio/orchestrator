@@ -5,10 +5,7 @@ use crate::galaxy_generator::{Galaxy, PlanetContainer};
 use crate::orchestrator::Command::*;
 use crate::orchestrator::ai::AiType::RichardRandom as RichardRandomType;
 use crate::orchestrator::ai::{Ai, AiArgs, AiType, RichardRandom};
-use crate::orchestrator::explorer_handle::{
-    ExplorerSet, GenericExplorer, MoveResult, MoveResultError, PausedExploererHandle, PlacedResult,
-    RunningExploererHandle, UnbornExplorerHandle,
-};
+use crate::orchestrator::explorer_handle::{ExplorerHandle, ExplorerSet, GenericExplorer, MoveResult, MoveResultError, PausedExploererHandle, PlacedResult, RunningExploererHandle, UnbornExplorerHandle};
 use crate::orchestrator::shell::Shell;
 use common_game::components::asteroid::Asteroid;
 use common_game::components::planet::DummyPlanetState;
@@ -30,6 +27,9 @@ use std::{
     thread::{self, JoinHandle},
 };
 use std::{println, todo};
+use std::any::Any;
+use clap::builder::IntoResettable;
+
 pub mod ai;
 
 pub struct Orchestrator {
@@ -656,6 +656,22 @@ impl Orchestrator {
             handle.kill_planet();
             handle.join_thread();
         }
+
+        explorer_handles.bulk_op(|_, explorer| {
+            let handle = match explorer {
+                GenericExplorer::Unborn(_explorer_handle) => None,
+                //The others must go through the kill procedure
+                GenericExplorer::Running(explorer_handle) => {Some(explorer_handle.kill())},
+                GenericExplorer::Stopped(explorer_handle) => {Some(explorer_handle.kill())},
+            };
+            let ret = match handle {
+                Some(Ok(handle)) => {handle.join()},
+                Some(Err(())) => {Ok(())},
+                None => {Ok(())},
+            };
+            if ret.is_ok() {None} else {None}
+        });
+
         shell_handle.join();
     }
 
