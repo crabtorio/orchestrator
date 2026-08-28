@@ -165,17 +165,7 @@ impl Orchestrator {
 
         let shell = Shell::new(self.user_queue.clone());
         let shell_handle = thread::spawn(move || shell.run());
-        //Add the unborn explorer handles to the appropriate map
-        let mut explorer_handles = ExplorerSet(HashMap::from([
-            (
-                ExplorerID::First,
-                GenericExplorer::Unborn(explorer_handle::new(ExplorerID::First)),
-            ),
-            (
-                ExplorerID::Second,
-                GenericExplorer::Unborn(explorer_handle::new(ExplorerID::Second)),
-            ),
-        ]));
+        let mut explorer_handles = ExplorerSet(HashMap::new());
         loop {
             let next_command = {
                 let command = self
