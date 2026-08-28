@@ -70,9 +70,9 @@ impl Ai for RichardRandom {
 
                         for i in targets {
                             commlock.push_back(Command::SendSunray(i));
-                            log::debug!("AI: RichardRandom Sent Sunray to planet ID: {}", i);
+                            log::trace!("AI: RichardRandom Sent Sunray to planet ID: {}", i);
                         }
-
+                        log::debug!("AI: RichardRandom Sent Sunrays to planets");
                     } else if !(action <= NOTHING_WEIGHT) {
                         //Send asteroid to target
                         let mut counter = 0;
