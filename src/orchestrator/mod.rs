@@ -274,10 +274,7 @@ impl Orchestrator {
                 StartPlanet(id) => planet_handles[&id].start_planet(),
                 StopPlanet(id) => planet_handles[&id].stop_planet(),
                 KillPlanet(id) => {
-                    self.dead_ids.lock().unwrap().push(id);
-                    planet_handles[&id].kill_planet();
-                    self.galaxy.drop_planet(id); //Planet dropped from the galaxy
-                    //Kill all explorers in the planet
+                     //Kill all explorers in the planet
                     explorer_handles.bulk_op(|explorer_id, explorer| {
                         let explorer_planet_id = match &explorer {
                             GenericExplorer::Unborn(_) => return Some(explorer),
@@ -285,6 +282,7 @@ impl Orchestrator {
                             GenericExplorer::Stopped(explorer_handle) => explorer_handle.get_current_planet(),
                         };
                         if explorer_planet_id == id {
+                            log::info!("Found explorer {} on planet {} that is being killed, killing explorer",explorer_id,id);
                             Some(GenericExplorer::Unborn(kill_generic_explorer(
                                 explorer_id,
                                 explorer,
@@ -293,6 +291,9 @@ impl Orchestrator {
                             Some(explorer)
                         }
                     });
+                    self.dead_ids.lock().unwrap().push(id);
+                    planet_handles[&id].kill_planet();
+                    self.galaxy.drop_planet(id); //Planet dropped from the galaxy
                     let _res = planet_handles.remove(&id);
                 }
                 SendSunray(id) => planet_handles[&id].send_sunray(),
