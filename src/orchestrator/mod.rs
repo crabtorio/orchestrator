@@ -385,14 +385,9 @@ impl Orchestrator {
                             println!("This explorer is already running");
                             Some(explorer)
                         }
-                        (None, None) => {
-                            println!("Explorer not found");
+                        (None, _) => {
                             println!("Planet not found");
                             None
-                        }
-                        (None, Some(explorer)) => {
-                            println!("Planet not found");
-                            Some(explorer)
                         }
                     }
                 }),
