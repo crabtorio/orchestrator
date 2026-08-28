@@ -6,7 +6,8 @@ use crate::orchestrator::Command::*;
 use crate::orchestrator::ai::AiType::RichardRandom as RichardRandomType;
 use crate::orchestrator::ai::{Ai, AiArgs, AiType, RichardRandom};
 use crate::orchestrator::explorer_handle::{
-    ExplorerSet, GenericExplorer, MoveResult, MoveResultError, PlacedResult, RunningExploererHandle, UnbornExplorerHandle,
+    ExplorerSet, GenericExplorer, MoveResult, MoveResultError, PlacedResult,
+    RunningExploererHandle, UnbornExplorerHandle,
 };
 use crate::orchestrator::shell::Shell;
 use common_game::components::asteroid::Asteroid;
@@ -276,7 +277,23 @@ impl Orchestrator {
                     self.dead_ids.lock().unwrap().push(id);
                     planet_handles[&id].kill_planet();
                     self.galaxy.drop_planet(id); //Planet dropped from the galaxy
-                    let option = planet_handles.remove(&id);
+                    //Kill all explorers in the planet
+                    explorer_handles.bulk_op(|explorer_id, explorer| {
+                        let explorer_planet_id = match &explorer {
+                            GenericExplorer::Unborn(_) => return Some(explorer),
+                            GenericExplorer::Running(explorer_handle) => explorer_handle.get_current_planet(),
+                            GenericExplorer::Stopped(explorer_handle) => explorer_handle.get_current_planet(),
+                        };
+                        if explorer_planet_id == id {
+                            Some(GenericExplorer::Unborn(kill_generic_explorer(
+                                explorer_id,
+                                explorer,
+                            )))
+                        } else {
+                            Some(explorer)
+                        }
+                    });
+                    let _res = planet_handles.remove(&id);
                 }
                 SendSunray(id) => planet_handles[&id].send_sunray(),
                 SendAsteroid(id) => planet_handles[&id].send_asteroid(),

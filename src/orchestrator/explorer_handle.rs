@@ -275,7 +275,7 @@ impl ExplorerHandle<Unborn> {
 
         let initial_planet_id = initial_planet.id;
         let planet_tx_explorer = initial_planet.tx_explorer.clone();
-        
+
         //Perform check-in
         match initial_planet.incoming_explorer_request(self.id, tx_planet.clone()) {
             //Do nothing
