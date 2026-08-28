@@ -44,36 +44,54 @@ impl Ai for RichardRandom {
                 const SUN_WEIGHT: i32 = 19;
                 const ASTEROID_WEIGHT: i32 = 1;
 
+                const RAY_BATCH_SIZE: usize = 100;
+
                 while runflag.load(Relaxed) {
-                    let mut target: ID = rand::random_range(start..=end) as ID;
 
-                    let lock = deads.lock().unwrap();
+                    let deads_lock = deads.lock().expect("Failed to get lock");
 
-                    let mut counter = 0;
+                    let action: i32 =
+                        rand::random_range(1..=(NOTHING_WEIGHT + SUN_WEIGHT + ASTEROID_WEIGHT));
+                    if action > NOTHING_WEIGHT && action <= NOTHING_WEIGHT + SUN_WEIGHT {
+                        //Send sunray to targets
+                        let mut targets: Vec<ID> = Vec::new();
+                        let mut misses = 0;
 
-                    while lock.contains(&target) && counter < MAX_TARGET_TRIES {
-                        target = rand::random_range(start..=end) as ID;
-                        counter += 1;
-                    }
-
-                    if counter < MAX_TARGET_TRIES {
-                        let action: i32 =
-                            rand::random_range(1..=(NOTHING_WEIGHT + SUN_WEIGHT + ASTEROID_WEIGHT));
-                        log::trace!("AI: RichardRandom rolled {} on {}", action, target);
-
-                        let mut lock = ai_queue.lock().unwrap();
-                        if action > NOTHING_WEIGHT && action <= NOTHING_WEIGHT + SUN_WEIGHT {
-                            //Send sunray to target
-                            lock.push_back(Command::SendSunray(target));
-                            log::debug!("AI: RichardRandom Sent Sunray to planet ID: {}", target);
-                        } else if !(action <= NOTHING_WEIGHT) {
-                            //Send asteroid to target
-                            lock.push_back(Command::SendAsteroid(target));
-                            log::debug!("AI: RichardRandom Sent Asteroid to planet ID: {}", target);
+                        while targets.len() < RAY_BATCH_SIZE &&  misses < MAX_TARGET_TRIES {
+                            let target = rand::random_range(start..=end) as ID;
+                            if deads_lock.contains(&target) {
+                                misses += 1;
+                            } else {
+                                targets.push(target);
+                            }
                         }
-                    } else {
-                        log::debug!("AI: RichardRandom ran out of targets");
-                        runflag.store(false, Relaxed);
+
+                        let mut commlock = ai_queue.lock().expect("Failed to get lock");
+
+                        for i in targets {
+                            commlock.push_back(Command::SendSunray(i));
+                            log::debug!("AI: RichardRandom Sent Sunray to planet ID: {}", i);
+                        }
+
+                    } else if !(action <= NOTHING_WEIGHT) {
+                        //Send asteroid to target
+                        let mut counter = 0;
+
+                        let mut target: ID = rand::random_range(start..=end) as ID;
+
+                        while counter < MAX_TARGET_TRIES && deads_lock.contains(&target) {
+                            target = rand::random_range(start..=end) as ID;
+                            counter += 1;
+                        }
+
+                        if counter < MAX_TARGET_TRIES {
+                            let mut commslock = ai_queue.lock().expect("Failed to get lock");
+                            commslock.push_back(Command::SendAsteroid(target));
+                            log::debug!("AI: RichardRandom Sent Asteroid to planet ID: {}", target);
+                        } else {
+                            log::debug!("AI: RichardRandom ran out of targets");
+                            runflag.store(false, Relaxed);
+                        }
                     }
 
                     //Sleep time is 3 + offset(clamped between +1 and -1)
