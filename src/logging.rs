@@ -198,6 +198,28 @@ fn spawn_log_viewer(path_str: String) {
                 .spawn()
                 .is_ok()
         })
+    } else if std::env::consts::OS == "windows" {
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NEW_CONSOLE: u32 = 0x00000010;
+            let ps_cmd = format!(
+                "Get-Content -Path '{}' -Wait -Tail 1000",
+                path_str.replace('\'', "''")
+            );
+            Command::new("powershell")
+                .args(["-NoExit", "-Command", &ps_cmd])
+                .creation_flags(CREATE_NEW_CONSOLE)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .is_ok()
+        }
+        #[cfg(not(windows))]
+        {
+            false
+        }
     } else {
         false
     };
