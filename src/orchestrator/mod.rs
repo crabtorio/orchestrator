@@ -526,15 +526,15 @@ impl Orchestrator {
                         Some(GenericExplorer::Stopped(explorer)) => explorer.get_current_planet(),
                         Some(_) => {
                             println!("Explorer is not on any planet");
-                            return;
+                            continue;
                         }
                         None => {
                             println!("Not found");
-                            return;
+                            continue;
                         }
                     };
 
-                    println!("{current_planet}")
+                    println!("Current planet: {current_planet}")
                 }
                 SupportedResourceRequest(explorer_id) => {
                     let supported_resources = match explorer_handles.get(explorer_id) {
@@ -543,11 +543,11 @@ impl Orchestrator {
                         }
                         Some(_) => {
                             println!("Explorer is not stopped");
-                            return;
+                            continue;
                         }
                         None => {
                             println!("Not found");
-                            return;
+                            continue;
                         }
                     };
 
@@ -565,11 +565,11 @@ impl Orchestrator {
                         }
                         Some(_) => {
                             println!("Explorer is not stopped");
-                            return;
+                            continue;
                         }
                         None => {
                             println!("Not found");
-                            return;
+                            continue;
                         }
                     };
 
@@ -586,11 +586,11 @@ impl Orchestrator {
                         Some(GenericExplorer::Stopped(explorer)) => explorer.get_bag_content(),
                         Some(_) => {
                             println!("Explorer has not been initialized");
-                            return;
+                            continue;
                         }
                         None => {
                             println!("Not found");
-                            return;
+                            continue;
                         }
                     };
 
@@ -609,11 +609,11 @@ impl Orchestrator {
                         }
                         Some(_) => {
                             println!("Explorer is not in manual mode");
-                            return;
+                            continue;
                         }
                         None => {
                             println!("Not found");
-                            return;
+                            continue;
                         }
                     };
 
@@ -630,11 +630,11 @@ impl Orchestrator {
                         }
                         Some(_) => {
                             println!("Explorer is not in manual mode");
-                            return;
+                            continue;
                         }
                         None => {
                             println!("Not found");
-                            return;
+                            continue;
                         }
                     };
 
