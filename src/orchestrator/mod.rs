@@ -117,7 +117,7 @@ pub enum Command {
     SupportedCombinationRequest(ExplorerID),
     GenerateResourceRequest(ExplorerID, BasicResourceType),
     CombineResourceRequest(ExplorerID, ComplexResourceType),
-    BagContentRquest(ExplorerID),
+    BagContentRequest(ExplorerID),
 
     // Planet
     StartPlanets,
@@ -589,7 +589,7 @@ impl Orchestrator {
                         }
                     }
                 }
-                BagContentRquest(explorer_id) => {
+                BagContentRequest(explorer_id) => {
                     let bag_content = match explorer_handles.get(explorer_id) {
                         Some(GenericExplorer::Running(explorer)) => explorer.get_bag_content(),
                         Some(GenericExplorer::Stopped(explorer)) => explorer.get_bag_content(),

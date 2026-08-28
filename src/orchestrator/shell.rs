@@ -269,7 +269,7 @@ fn parse_command(mut input: String) -> Result<Command, String> {
                 ));
             },
         )),
-        "bagcontentrequest" => Ok(BagContentRquest({
+        "bagcontentrequest" => Ok(BagContentRequest({
             if let Some(argument) = arguments.get(0) {
                 if *argument == "0" {
                     super::ExplorerID::First
