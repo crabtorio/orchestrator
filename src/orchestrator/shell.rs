@@ -2,7 +2,6 @@ use std::{
     collections::VecDeque,
     io::{self, Write},
     sync::{Arc, Mutex},
-    todo,
 };
 
 use common_game::{
@@ -388,27 +387,41 @@ fn string_to_resource(str: &str) -> Result<ResourceType, ()> {
 fn print_commands() {
     print!(
         "Available commands:
-      startplanets / stopplanets / killplanets
-      startplanet <id> / stopplanet <id> / killplanet <id>
-      sendsunray <id> / sendasteroid <id> / internalstaterequest <id>
+  Planets:
+    startplanets / stopplanets / killplanets
+    startplanet <id> / stopplanet <id> / killplanet <id>
+    sendsunray <id> / sendasteroid <id>
+    internalstaterequest <id>
 
-      startexplorers / stopexplorers / killexplorers / resetexplorers
-      startexplorer <0|1> / stopexplorer <0|1> / killexplorer <0|1> / resetexplorer <0|1>
-      moveexplorer <planet_id> <0|1>
+  Explorers:
+    resumeexplorers / stopexplorers / killexplorers
+    spawnexplorer <0|1> <vendor> <destination_planet_id>
+    startexplorer <0|1> / stopexplorer <0|1> / killexplorer <0|1> / resetexplorer <0|1>
+    moveexplorer <planet_id> <0|1>
 
-      currentplanetrequest <0|1>
-      supportedresourcerequest <0|1>
-      supportedcombinationrequest <0|1>
-      bagcontentrequest <0|1>
-      generateresourcerequest <0|1> <resource>
-      combineresourcerequest <0|1> <resource>
+  Explorer queries:
+    currentplanetrequest <0|1>
+    supportedresourcerequest <0|1>
+    supportedcombinationrequest <0|1>
+    bagcontentrequest <0|1>
+    generateresourcerequest <0|1> <resource>
+    combineresourcerequest <0|1> <resource>
 
-      spawnai <ai_type>
-      killai <id>
-      showrunningais
+  AI:
+    spawnai <ai_type>
+    killai <id>
+    showrunningais
 
-      exit
-    "
+  Other:
+    help
+    exit
+
+  Values:
+    <vendor>   = lorenzo | alessio | luca
+    <ai_type>  = richardrandom
+    <resource> (basic)   = oxygen | hydrogen | carbon | silicon
+    <resource> (complex) = diamond | water | life | robot | dolphin | aipartner
+"
     );
 }
 #[cfg(test)]
